@@ -41,8 +41,10 @@ live communication service): `users`, `user_languages`, `follows`, `blocks`.
 - **Follow graph.** `user:following:{id}` and `user:followers:{id}` are sorted sets (member = other user, score = follow time). "Does A follow B" is a
   `ZSCORE`, a count is a `ZCARD`, a page is a `ZREVRANGE`. A set is built from PostgreSQL on first use, in chunks, into a temporary key that is renamed
   into place, so it is either complete or absent; a follow is added only to a set that exists. Sets expire after 6 h and are rebuilt on demand.
-- **Matchmaking.** `GET /users/matchmaking` returns users who are *native* in what you are learning and *learning* what you speak, minus anyone blocked
-  either way, newest first, keyset-paginated.
+- **Matchmaking.** `GET /users/matchmaking` returns users who are *native* in **any** language you are learning and *learning* **any** language you
+  speak, minus anyone blocked either way, newest first, keyset-paginated. Each person is listed once however many languages they share. Naming
+  `nativeLang` or `learningLang` narrows that side to the one language. The lists are a handful of languages (`IN (?, ?)`), which costs the same as the
+  single-language query (about 10 ms on a generic plan, 1-2 ms on a custom one, 500k users); an `= ANY(array)` form planned four times worse.
 
 ## Performance
 
@@ -90,8 +92,8 @@ Errors are RFC 9457 `application/problem+json` with a stable `type` such as `urn
 
 | Method & path | Purpose |
 |---|---|
-| `POST /me` / `GET /me` / `PATCH /me` | Create your profile (once; the country is optional) / read / partial update (`""` clears `bio` and `avatarUrl`; the username is fixed). `avatarUrl` is an `https` URL or a path of the front end such as `/avatars/avatar-03.svg` |
-| `GET /{id}` | Any user's profile |
+| `POST /me` / `GET /me` / `PATCH /me` | Create your profile (once; the country is optional) / read / partial update (`""` clears `bio` and `avatarUrl`; the username is fixed). `avatarUrl` is an `https` URL or a path of the front end such as `/avatars/avatar-03.svg`. Both writes take `learningLanguages: [{languageCode, proficiencyLevel}]` (see below), and every profile response lists `nativeLanguages` and `learningLanguages` |
+| `GET /{id}` | Any user's profile, with their languages (`/batch` summaries stay light: no languages, no extra query) |
 | `POST /batch` `{ids}` | Summaries (name, avatar, country, language) for up to 500 ids, in the order asked; unknown ids are left out |
 | `GET /search?q=&size=` | Username or display-name prefix, handle matches first; never yourself, suspended users, or anyone blocked either way |
 | `GET /matchmaking?nativeLang=&learningLang=&size=&afterCreatedAt=&afterId=` | Language-exchange partners; the languages default to yours |
@@ -101,6 +103,12 @@ Errors are RFC 9457 `application/problem+json` with a stable `type` such as `urn
 | `GET /{id}/followers`, `GET /{id}/following` `?page=&size=` | Newest follow first, with `total` |
 | `GET /{id}/social` | `followerCount`, `followingCount`, and `followedByMe` / `followsMe` |
 | `POST /{id}/block` / `DELETE /{id}/block` / `GET /me/blocks` | A block removes follows both ways and forbids new ones |
+
+**A profile and its languages are written together.** `learningLanguages` on `POST /me` saves them with the profile; on `PATCH /me` it **replaces** the
+whole list of languages being learned (absent leaves it alone, `[]` clears it), in the same transaction as the rest of the change: a request that fails
+(too many languages, the native language listed as learning) changes nothing. A language can move between native and learning in one save: naming a
+language you had as native in `learningLanguages` turns it into a learning one, which `POST /me/languages` refuses with `409`. The primary native
+language can never be in the list. The two single-language endpoints below remain for small edits.
 
 A language is native *or* learning for a user, never both. Following is capped (`user.max-following`, default 5000) and so is the matrix
 (`user.max-languages`, default 20).
