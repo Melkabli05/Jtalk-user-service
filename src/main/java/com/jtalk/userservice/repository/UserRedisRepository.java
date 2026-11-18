@@ -119,7 +119,9 @@ public class UserRedisRepository extends RedisRepository {
         if (user.avatarUrl() != null) {
             hash.put("avatarUrl", user.avatarUrl());
         }
-        hash.put("countryCode", user.countryCode());
+        if (user.countryCode() != null) {
+            hash.put("countryCode", user.countryCode());
+        }
         hash.put("nativeLanguage", user.nativeLanguage());
         hash.put("status", user.status().name());
         hash.put("createdAt", String.valueOf(ChronoUnit.MICROS.between(Instant.EPOCH, user.createdAt())));

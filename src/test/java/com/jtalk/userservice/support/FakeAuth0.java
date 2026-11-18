@@ -57,7 +57,8 @@ public final class FakeAuth0 {
         return JWT.create()
                 .withKeyId(KEY_ID)
                 .withIssuer(ISSUER)
-                .withAudience(AUDIENCE)
+                // Auth0 lists the API and, when the app asked for the openid scope, its own userinfo endpoint too: two audiences, not one.
+                .withAudience(AUDIENCE, ISSUER + "userinfo")
                 .withSubject(subject)
                 .withExpiresAt(new Date(System.currentTimeMillis() + 3_600_000));
     }

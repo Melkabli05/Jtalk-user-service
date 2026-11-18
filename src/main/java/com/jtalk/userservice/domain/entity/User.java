@@ -23,7 +23,7 @@ public record User(
         String displayName,
         @Nullable String bio,
         @Nullable String avatarUrl,
-        String countryCode,
+        @Nullable String countryCode,
         String nativeLanguage,
         UserStatus status,
         @DateCreated Instant createdAt,
@@ -31,7 +31,7 @@ public record User(
 
     /** A new, unsaved user: the timestamps are filled in by Micronaut Data when it is inserted. */
     public static User register(UUID id, String username, String displayName, @Nullable String bio, @Nullable String avatarUrl,
-                                String countryCode, String nativeLanguage) {
+                                @Nullable String countryCode, String nativeLanguage) {
         return new User(id, username, displayName.strip(), blankToNull(bio), blankToNull(avatarUrl), countryCode, nativeLanguage,
                 UserStatus.ACTIVE, null, null);
     }

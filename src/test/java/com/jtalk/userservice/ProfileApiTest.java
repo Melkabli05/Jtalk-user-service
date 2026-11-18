@@ -81,6 +81,8 @@ class ProfileApiTest extends ApiTestBase {
                 with(valid, "nativeLanguage", "arabic"),
                 with(valid, "avatarUrl", "javascript:alert(1)"),
                 with(valid, "avatarUrl", "http://insecure.example.com/a.png"),
+                with(valid, "avatarUrl", "//evil.example.com/a.png"),            // protocol-relative: would load from another host
+                with(valid, "avatarUrl", "/../secret.png"),
                 with(valid, "bio", "x".repeat(301)))) {
             assertProblemOrValidation(bad);
         }
@@ -97,6 +99,21 @@ class ProfileApiTest extends ApiTestBase {
         Map<String, Object> copy = new HashMap<>(base);
         copy.put(key, value);
         return copy;
+    }
+
+    @Test
+    void aProfileNeedsNoCountry_andMayUseAnAppPathAsItsPicture() {
+        Map<String, Object> created = post("/api/v1/users/me", "nour", Map.of("username", "nour", "displayName", "Nour",
+                "avatarUrl", "/avatars/avatar-03.svg", "nativeLanguage", "ar"));
+
+        assertNull(created.get("countryCode"), "no country was given");
+        assertEquals("/avatars/avatar-03.svg", created.get("avatarUrl"));
+        assertEquals(created, get(userPath("nour", ""), "someone"), "read back from the cache, which holds no country field either");
+        redis.sync().flushall();
+        assertEquals(created, get(userPath("nour", ""), "someone"), "and from the database");
+
+        Map<String, Object> changed = patch("/api/v1/users/me", "nour", Map.of("countryCode", "MA"));
+        assertEquals("MA", changed.get("countryCode"));
     }
 
     @Test

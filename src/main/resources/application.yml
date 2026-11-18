@@ -28,7 +28,7 @@ micronaut:
         web:
           allowed-origins-regex: ${CORS_ALLOWED_ORIGINS:.*}
           allowed-methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
-          allowed-headers: [Authorization, Content-Type, X-User-Id]
+          allowed-headers: [Authorization, Content-Type]
           max-age: 3600
 
 # PostgreSQL and Redis connections are intentionally NOT configured here:

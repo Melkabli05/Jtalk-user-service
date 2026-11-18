@@ -12,8 +12,12 @@ public final class UserConstants {
     public static final String LANGUAGE_PATTERN = "^[a-z]{2,3}(-[A-Z]{2})?$";
     /** ISO 3166-1 alpha-2, e.g. {@code MA}. */
     public static final String COUNTRY_PATTERN = "^[A-Z]{2}$";
-    /** An https URL, or empty (which clears the avatar). Nothing else, so a profile can never carry a {@code javascript:} link. */
-    public static final String AVATAR_PATTERN = "^(https://\\S+)?$";
+    /**
+     * An https URL, or a path of the front end itself such as {@code /avatars/avatar-03.svg} (resolved against whatever origin shows it, so
+     * it can never point elsewhere), or empty (which clears the avatar). Nothing else, so a profile can never carry a {@code javascript:}
+     * link, an {@code http:} one or a protocol-relative {@code //host} one.
+     */
+    public static final String AVATAR_PATTERN = "^(https://\\S+|/(?![/])(?!.*\\.\\.)[A-Za-z0-9._/-]+)?$";
     /** At least one visible character. */
     public static final String NOT_BLANK_PATTERN = ".*\\S.*";
 

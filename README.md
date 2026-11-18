@@ -52,7 +52,7 @@ Errors are RFC 9457 `application/problem+json` with a stable `type` such as `urn
 
 | Method & path | Purpose |
 |---|---|
-| `POST /me` / `GET /me` / `PATCH /me` | Create your profile (once) / read / partial update (`""` clears `bio` and `avatarUrl`; the username is fixed) |
+| `POST /me` / `GET /me` / `PATCH /me` | Create your profile (once; the country is optional) / read / partial update (`""` clears `bio` and `avatarUrl`; the username is fixed). `avatarUrl` is an `https` URL or a path of the front end such as `/avatars/avatar-03.svg` |
 | `GET /{id}` | Any user's profile |
 | `POST /batch` `{ids}` | Summaries (name, avatar, country, language) for up to 500 ids, in the order asked; unknown ids are left out |
 | `GET /search?q=&size=` | Username or display-name prefix; never yourself, suspended users, or anyone blocked either way |
@@ -75,7 +75,6 @@ Needs JDK 25 and Docker; PostgreSQL and Redis are started by Micronaut Test Reso
 export AUTH0_DOMAIN=your-tenant.eu.auth0.com      # your Auth0 tenant, without https://
 export AUTH0_AUDIENCE=https://api.jtalk.example   # the identifier of the API you created in Auth0
 ./gradlew run
-MICRONAUT_SECURITY_ENABLED=false ./gradlew run   # local work only: no token, the caller is named by the X-User-Id header
 ./gradlew test                                   # needs no Auth0: the tests run a fake tenant (support/FakeAuth0)
 ```
 
@@ -128,13 +127,13 @@ endpoints. The custom code that remains has no built-in equivalent:
 - **Pipelined profile reads and the "never overwrite a newer profile" write** (`UserRedisRepository`): Micronaut Cache does one `GET` per key and
   cannot refuse an older value, so a full room would cost one round trip per participant.
 - **The follow sorted sets** (`SocialGraphRedisRepository`) and the **pub/sub announcement**: Micronaut has no abstraction over either.
-- **`@CurrentUser`**: with security on, Micronaut binds the `Principal` itself; the binder only exists for the `X-User-Id` mode used while security is off.
+- **`@CurrentUser`**: Micronaut binds the `Principal` itself, whose name is a string; every endpoint needs it as a `UUID`, so one binder converts it instead of each of the 14 endpoints doing it.
 - **`Violations`**: Micronaut Data has no exception type for a unique-constraint violation, so two simultaneous sign-ups still end in a 409.
 
 ## Known limits
 
-- **The Auth0 tenant is not part of this repository.** Until the API, the application and the Action above exist, no token validates; with security
-  off (`X-User-Id`) anyone can act as anyone, so keep that to local work.
+- **The Auth0 tenant is not part of this repository.** Until the API, the application and the Action above exist, no token validates. There is no
+  "security off" mode: to call the API locally, log in through the Angular app (`http://localhost:4200` is an allowed origin).
 - **A very large follower list is rebuilt in full** (in chunks) when its Redis set is missing, and costs memory in proportion. Following is capped,
   followers are not.
 - **A follow made while that user's set is being rebuilt can be missing from it** until the set expires (6 h) or any block drops it.
