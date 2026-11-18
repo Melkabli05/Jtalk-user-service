@@ -114,6 +114,30 @@ language can never be in the list. The two single-language endpoints below remai
 A language is native *or* learning for a user, never both. Following is capped (`user.max-following`, default 5000) and so is the matrix
 (`user.max-languages`, default 20).
 
+### Deleting an account: the rules
+
+`DELETE /me` is the person's own act, for good, and these are the rules it follows (each has a test in `AccountDeletionApiTest`, and the room side in
+the live-communication service's `UserEventsTest`):
+
+- **Whose.** Only the caller's own account; nobody else's can be named. Signed in is required. Being `SUSPENDED` does not stop it: people may always
+  leave.
+- **Idempotent.** Asking again, or for an account that is already gone or never existed, is `204` and changes nothing. Two requests at once end in the
+  same place.
+- **What goes.** The profile, every language entry, every follow to or from the person and every block by or against them: one transaction, the
+  database cascades, and nothing is left half-deleted if it fails (the request fails and the account stays).
+- **Other people's numbers.** Followers and following counts of everyone who was connected are corrected: their cached follow graphs are dropped
+  and rebuilt on demand, and the person's cached profile is removed, after the commit (a Redis failure is logged and the caches expire by
+  themselves; a profile cached for up to `user.profile-cache-ttl` could be read until then).
+- **Discovery.** Gone from search and matchmaking at once (both read PostgreSQL).
+- **Rooms.** Announced as `USER_DELETED` on `user-events`; the live-communication service hands each room they host to whoever has been on its stage
+  longest (or closes it when nobody is), takes them out of every room they are in, and erases the rooms they hosted. Best effort: pub/sub keeps no
+  messages.
+- **Signing up again.** Allowed at once, with a fresh profile and nothing carried over (no follows, no blocks, no languages). The handle is released
+  with the account and can be taken by anyone, the person included. Blocks do not survive: someone who blocked them, or whom they blocked, is no
+  longer protected from a new account.
+- **Not covered.** The Auth0 identity is not deleted (the Management API is needed); a token issued before the deletion keeps working against the
+  other service until it expires, which only matters to a client that ignores the sign-out that follows the deletion.
+
 ## Running
 
 Needs JDK 25 and Docker; PostgreSQL and Redis are started by Micronaut Test Resources for `./gradlew run` and `./gradlew test`.
