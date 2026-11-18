@@ -38,13 +38,16 @@ public final class FakeAuth0 {
     private FakeAuth0() {
     }
 
-    /** The properties that point the service at this fake tenant instead of the real one. */
+    /**
+     * The properties that point the service at this fake tenant instead of the real one. The user-id claim name is deliberately not among
+     * them: the service must read it from its own application.yml, as in production (an override here once hid a placeholder that resolved
+     * to {@code //jtalk.app/user_id}, so every real token was rejected).
+     */
     public static Map<String, String> properties() {
         return Map.of(
                 "micronaut.security.token.jwt.signatures.jwks.auth0.url", JWKS_URL,
                 "micronaut.security.token.jwt.claims-validators.issuer", ISSUER,
-                "micronaut.security.token.jwt.claims-validators.audience", AUDIENCE,
-                "micronaut.security.token.name-key", USER_ID_CLAIM);
+                "micronaut.security.token.jwt.claims-validators.audience", AUDIENCE);
     }
 
     /** A valid access token for this user. */

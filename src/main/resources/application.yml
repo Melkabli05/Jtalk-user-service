@@ -9,7 +9,7 @@ micronaut:
     token:
       # Auth0's `sub` ("auth0|64f...") is not a UUID, but a user is a UUID here and in the live communication service. A post-login Action
       # stores one UUID per user and puts it in the access token under this claim (see README); it becomes the caller's id.
-      name-key: ${AUTH0_USER_ID_CLAIM:https://jtalk.app/user_id}
+      name-key: ${AUTH0_USER_ID_CLAIM:`https://jtalk.app/user_id`}
       jwt:
         signatures:
           jwks:
