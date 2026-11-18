@@ -8,11 +8,12 @@
 #   docker run --rm -p 8080:8080 --env-file .env user-service
 #
 # The image runs with the "cloud" profile (src/main/resources/application-cloud.yml: the hosted PostgreSQL on Neon, hardcoded, shared
-# with the live communication service), so it only needs JWT_SECRET below. Override MICRONAUT_ENVIRONMENTS to point it elsewhere, and
+# with the live communication service), so it only needs the Auth0 settings below. Override MICRONAUT_ENVIRONMENTS to point it elsewhere, and
 # set the variables below instead.
 #
 # Configuration comes from the environment (see src/main/resources/application.yml):
-#   JWT_SECRET                                         HS256 secret, 32+ characters
+#   AUTH0_DOMAIN, AUTH0_AUDIENCE                       the Auth0 tenant (e.g. your-tenant.eu.auth0.com) and this API's identifier
+#   AUTH0_USER_ID_CLAIM                                optional: the access-token claim holding the user's UUID (default https://jtalk.app/user_id)
 #   DATASOURCES_DEFAULT_URL / _USERNAME / _PASSWORD    PostgreSQL
 #   REDIS_URI                                          Redis (profile cache and follow graph)
 #   FLYWAY_DATASOURCES_DEFAULT_URL                    optional: a direct (non-pooled) URL for the migrations

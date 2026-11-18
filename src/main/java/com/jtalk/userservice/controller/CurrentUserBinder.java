@@ -10,8 +10,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Resolves {@link CurrentUser}. With security on, the caller is the token's subject, which
- * {@code UuidSubjectClaimsValidator} guarantees is a UUID. With security off (local work only) there is no token, so the caller is
+ * Resolves {@link CurrentUser}. With security on, the caller is the token's user-id claim (Auth0's custom claim), which
+ * {@code UserIdClaimValidator} guarantees is a UUID. With security off (local work only) there is no token, so the caller is
  * named by the {@value #USER_HEADER} header instead, as in the live communication service; a missing or malformed one is a 400.
  */
 @Singleton

@@ -15,9 +15,12 @@ services:
     # Liveness only: it answers without a token and does not depend on the database, so a slow Neon wake-up never restarts the service.
     healthCheckPath: /health/liveness
     envVars:
-      # HS256 secret that signs and verifies user tokens (32+ characters). Use the same value as the live communication service's
-      # JWT_SECRET, so the tokens issued here are accepted there. Render asks for it when the Blueprint is created.
-      - key: JWT_SECRET
+      # Auth0: users log in there and this service only checks the access tokens it issues. AUTH0_DOMAIN is the tenant's domain without
+      # https://, e.g. your-tenant.eu.auth0.com; AUTH0_AUDIENCE is the identifier of the API created in Auth0 for this service.
+      # Render asks for both when the Blueprint is created.
+      - key: AUTH0_DOMAIN
+        sync: false
+      - key: AUTH0_AUDIENCE
         sync: false
       # Optional: restrict which frontend may call this API (a regular expression). Any origin until set, e.g.
       # https://app\.example\.com|http://localhost:4200

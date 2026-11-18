@@ -1,5 +1,5 @@
 # The "cloud" profile, which the Dockerfile turns on (MICRONAUT_ENVIRONMENTS=cloud): the hosted free-tier database, hardcoded on purpose so
-# the app starts with nothing but MICRONAUT_ENVIRONMENTS=cloud (plus JWT_SECRET, see application.yml).
+# the app starts with nothing but MICRONAUT_ENVIRONMENTS=cloud (plus AUTH0_DOMAIN and AUTH0_AUDIENCE, see application.yml).
 #
 #   PostgreSQL  Neon    the same database as the live communication service (the app connects through Neon's pooler; Flyway
 #                       migrates over the direct endpoint, because the pooler runs PgBouncer in transaction mode, which breaks the

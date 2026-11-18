@@ -9,7 +9,7 @@ Java 25 · Micronaut 5 · PostgreSQL · Redis.
 
 ```
 src/main/java/com/jtalk/userservice/
-├── config/        UserConstants, UserProperties, ProblemType (RFC 9457 problems), UuidSubjectClaimsValidator
+├── config/        UserConstants, UserProperties, ProblemType (RFC 9457 problems), UserIdClaimValidator
 ├── controller/    UserProfileController, SocialGraphController (+ @CurrentUser)
 ├── service/       UserService, LanguageService, SocialGraphService; impl/ with their implementations and CacheSyncListener
 ├── repository/    UserRepository, UserLanguageRepository, FollowRepository, BlockRepository (JDBC);
@@ -46,7 +46,8 @@ live communication service): `users`, `user_languages`, `follows`, `blocks`.
 
 ## API (under `/api/v1/users`)
 
-Every call needs `Authorization: Bearer <JWT>` whose `sub` is the user's UUID (the same id the live communication service uses); `me` is that user.
+Every call needs `Authorization: Bearer <Auth0 access token>`; `me` is the user that token names (its user-id claim, a UUID, the same id the live
+communication service uses). See [Authentication](#authentication-auth0).
 Errors are RFC 9457 `application/problem+json` with a stable `type` such as `urn:jtalk:user:problem:username-taken`.
 
 | Method & path | Purpose |
@@ -71,15 +72,52 @@ A language is native *or* learning for a user, never both. Following is capped (
 Needs JDK 25 and Docker; PostgreSQL and Redis are started by Micronaut Test Resources for `./gradlew run` and `./gradlew test`.
 
 ```bash
-export JWT_SECRET=...                       # 32+ characters; the same value the live communication service verifies with
+export AUTH0_DOMAIN=your-tenant.eu.auth0.com      # your Auth0 tenant, without https://
+export AUTH0_AUDIENCE=https://api.jtalk.example   # the identifier of the API you created in Auth0
 ./gradlew run
 MICRONAUT_SECURITY_ENABLED=false ./gradlew run   # local work only: no token, the caller is named by the X-User-Id header
-./gradlew test
+./gradlew test                                   # needs no Auth0: the tests run a fake tenant (support/FakeAuth0)
 ```
 
-Deployed: set `DATASOURCES_DEFAULT_URL/_USERNAME/_PASSWORD`, `REDIS_URI` and `JWT_SECRET`. The Docker image runs with the `cloud` profile
+Deployed: set `DATASOURCES_DEFAULT_URL/_USERNAME/_PASSWORD`, `REDIS_URI`, `AUTH0_DOMAIN` and `AUTH0_AUDIENCE`. The Docker image runs with the `cloud` profile
 (`application-cloud.yml`: Neon and Upstash, hardcoded like the live service's, so those credentials are public; rotate them if misused). The Upstash
 Redis is shared with the live communication service; this service only uses keys that start with `user:`. `render.yaml` is the Render blueprint.
+
+## Authentication (Auth0)
+
+Users log in with Auth0 (the Angular app uses Authorization Code with PKCE, e.g. `@auth0/auth0-angular`, and asks for an access token for this
+API's audience). This service never sees a password and issues nothing: Micronaut Security checks each token's **RS256 signature against the tenant's
+published keys** (JWKS, fetched and cached for you), its **issuer**, its **audience** and its **expiry**, all from `application.yml`. A token signed any
+other way, including an HS256 one, is refused.
+
+Auth0's `sub` (`auth0|64f...`) is not a UUID, but a user is a UUID here and in the live communication service. So the user's UUID travels in a
+**custom claim** (`https://jtalk.app/user_id`, configurable with `AUTH0_USER_ID_CLAIM`), which Micronaut Security uses as the caller's name
+(`micronaut.security.token.name-key`); a token without it, or with something that is not a UUID, is a 401.
+
+One-time setup in the Auth0 dashboard:
+
+1. **APIs > Create API**: name it, set the identifier (this is `AUTH0_AUDIENCE`, e.g. `https://api.jtalk.example`), signing algorithm **RS256**.
+2. **Applications > Create Application > Single Page Application** for the Angular app; add its URLs (`http://localhost:4200` and the deployed one) to
+   Allowed Callback URLs, Allowed Logout URLs and Allowed Web Origins.
+3. **Actions > Library > Build Custom > Login / Post Login**, add the Action below to the Login flow. It gives each user one stable UUID and puts it
+   in the access token:
+
+```js
+exports.onExecutePostLogin = async (event, api) => {
+  let id = event.user.app_metadata.jtalk_id;
+  if (!id) {
+    id = require('crypto').randomUUID();
+    api.user.setAppMetadata('jtalk_id', id);
+  }
+  api.accessToken.setCustomClaim('https://jtalk.app/user_id', id);
+};
+```
+
+4. Set `AUTH0_DOMAIN` and `AUTH0_AUDIENCE` (Render asks for both). The live communication service needs the same two settings and the same claim to
+   accept the same tokens.
+
+A new user's first call is `POST /api/v1/users/me`, which creates their profile; until then `GET /api/v1/users/me` is a 404, which is the frontend's
+cue to show "create your profile".
 
 ## Built-in first
 
@@ -95,8 +133,8 @@ endpoints. The custom code that remains has no built-in equivalent:
 
 ## Known limits
 
-- **There is no sign-up or login.** This service verifies tokens (`JWT_SECRET`) but does not issue them, and a user creates their profile with
-  `POST /me` after authenticating elsewhere. Until something issues tokens, run with security off (`X-User-Id`), which lets anyone act as anyone.
+- **The Auth0 tenant is not part of this repository.** Until the API, the application and the Action above exist, no token validates; with security
+  off (`X-User-Id`) anyone can act as anyone, so keep that to local work.
 - **A very large follower list is rebuilt in full** (in chunks) when its Redis set is missing, and costs memory in proportion. Following is capped,
   followers are not.
 - **A follow made while that user's set is being rebuilt can be missing from it** until the set expires (6 h) or any block drops it.

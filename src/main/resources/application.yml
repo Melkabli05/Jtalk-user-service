@@ -2,15 +2,22 @@ micronaut:
   application:
     name: user-service
   security:
-    # Secure by default: callers authenticate with a JWT bearer token. Tokens are signed and verified with this shared HS256 secret
-    # (32+ characters), the same one the live communication service verifies them with.
+    # Secure by default: callers authenticate with an Auth0 access token (RS256) as a bearer token. This service never sees a password and
+    # issues nothing: it checks the signature against Auth0's published keys (JWKS, fetched and cached by Micronaut Security), the issuer,
+    # the audience (this API's identifier in Auth0) and the expiry. Set AUTH0_DOMAIN (e.g. your-tenant.eu.auth0.com) and AUTH0_AUDIENCE.
     authentication: bearer
     token:
+      # Auth0's `sub` ("auth0|64f...") is not a UUID, but a user is a UUID here and in the live communication service. A post-login Action
+      # stores one UUID per user and puts it in the access token under this claim (see README); it becomes the caller's id.
+      name-key: ${AUTH0_USER_ID_CLAIM:https://jtalk.app/user_id}
       jwt:
         signatures:
-          secret:
-            generator:
-              secret: ${JWT_SECRET}
+          jwks:
+            auth0:
+              url: https://${AUTH0_DOMAIN}/.well-known/jwks.json
+        claims-validators:
+          issuer: https://${AUTH0_DOMAIN}/
+          audience: ${AUTH0_AUDIENCE}
   server:
     # A browser app on another origin (the frontend) may call this API. Origins are matched as a regular expression: any origin until
     # CORS_ALLOWED_ORIGINS narrows it to your frontend, e.g. CORS_ALLOWED_ORIGINS='https://app\.example\.com|http://localhost:4200'.

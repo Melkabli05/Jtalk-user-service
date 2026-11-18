@@ -1,7 +1,5 @@
 package com.jtalk.userservice.support;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
 import com.jtalk.userservice.repository.UserRepository;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.micronaut.core.type.Argument;
@@ -15,9 +13,10 @@ import io.micronaut.http.client.annotation.Client;
 import io.micronaut.http.client.exceptions.HttpClientResponseException;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
+import io.micronaut.test.support.TestPropertyProvider;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInstance;
 
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,9 +32,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 // Not transactional: a test method would otherwise run in a transaction the HTTP server (another connection) can never see into.
 @MicronautTest(transactional = false)
-public abstract class ApiTestBase {
-
-    private static final String JWT_SECRET = "test-jwt-secret-test-jwt-secret-0123456789";
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)   // a TestPropertyProvider needs it
+public abstract class ApiTestBase implements TestPropertyProvider {
 
     protected static final Argument<Map<String, Object>> MAP = Argument.mapOf(String.class, Object.class);
     protected static final Argument<List<Map<String, Object>>> MAP_LIST = Argument.listOf(MAP);
@@ -69,16 +67,15 @@ public abstract class ApiTestBase {
         return name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.]", "_");
     }
 
+    /** An Auth0-shaped access token (RS256, checked against the fake tenant's JWKS) for this user. */
     public static String token(String userName) {
-        return tokenWithSubject(id(userName).toString(), JWT_SECRET);
+        return FakeAuth0.tokenFor(id(userName));
     }
 
-    /** A correctly signed token whose subject is whatever the test needs, e.g. one that is not a UUID. */
-    public static String tokenWithSubject(String subject, String secret) {
-        return JWT.create()
-                .withSubject(subject)
-                .withExpiresAt(new Date(System.currentTimeMillis() + 3_600_000))
-                .sign(Algorithm.HMAC256(secret));
+    /** Points the service at the fake Auth0 tenant instead of a real one. */
+    @Override
+    public Map<String, String> getProperties() {
+        return FakeAuth0.properties();
     }
 
     // ---- requests ---------------------------------------------------------------------------------
