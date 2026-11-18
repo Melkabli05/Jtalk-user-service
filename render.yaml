@@ -1,0 +1,27 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec): New > Blueprint, pick this repository. Render builds the Dockerfile,
+# which already runs with the "cloud" profile (MICRONAUT_ENVIRONMENTS=cloud) and tells the service which port to bind through PORT
+# (application-cloud.yml reads it).
+services:
+  - type: web
+    name: jtalk-user-service
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    # Same region as the live communication service and its Neon database (us-east-2, which is Ohio).
+    region: ohio
+    branch: main
+    autoDeployTrigger: commit
+    # Liveness only: it answers without a token and does not depend on the database, so a slow Neon wake-up never restarts the service.
+    healthCheckPath: /health/liveness
+    envVars:
+      # HS256 secret that signs and verifies user tokens (32+ characters). Use the same value as the live communication service's
+      # JWT_SECRET, so the tokens issued here are accepted there. Render asks for it when the Blueprint is created.
+      - key: JWT_SECRET
+        sync: false
+      # Optional: restrict which frontend may call this API (a regular expression). Any origin until set, e.g.
+      # https://app\.example\.com|http://localhost:4200
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # PostgreSQL is not set here: the "cloud" profile (application-cloud.yml) uses the same Neon database as the live communication
+      # service, in a schema of its own (user_service).
