@@ -4,6 +4,7 @@ import com.jtalk.userservice.config.ProblemType;
 import com.jtalk.userservice.config.UserProperties;
 import com.jtalk.userservice.domain.entity.User;
 import com.jtalk.userservice.domain.entity.UserLanguage;
+import com.jtalk.userservice.domain.event.UserDeletedEvent;
 import com.jtalk.userservice.domain.event.UserProfileUpdatedEvent;
 import com.jtalk.userservice.dto.ApiMapper;
 import com.jtalk.userservice.dto.request.CreateProfileRequest;
@@ -11,6 +12,7 @@ import com.jtalk.userservice.dto.request.LearningLanguageRequest;
 import com.jtalk.userservice.dto.request.UpdateProfileRequest;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
+import com.jtalk.userservice.repository.FollowRepository;
 import com.jtalk.userservice.repository.UserLanguageRepository;
 import com.jtalk.userservice.repository.UserRedisRepository;
 import com.jtalk.userservice.repository.UserRepository;
@@ -24,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,6 +34,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -52,6 +56,8 @@ class UserServiceImpl implements UserService {
     private final ApiMapper mapper;
     private final UserProperties properties;
     private final ApplicationEventPublisher<UserProfileUpdatedEvent> updated;
+    private final ApplicationEventPublisher<UserDeletedEvent> deleted;
+    private final FollowRepository follows;
 
     @Override
     @Transactional
@@ -133,6 +139,19 @@ class UserServiceImpl implements UserService {
             updated.publishEvent(new UserProfileUpdatedEvent(saved));
         }
         return profileOf(saved);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAccount(UUID userId) {
+        if (!users.existsById(userId)) {
+            return;
+        }
+        // Read before the delete: afterwards the follows that say whose counts change are gone.
+        Set<UUID> neighbours = new HashSet<>(follows.findNeighbours(userId));
+        users.deleteById(userId);
+        deleted.publishEvent(new UserDeletedEvent(userId, neighbours));
+        log.info("Deleted account {}", userId);
     }
 
     @Override

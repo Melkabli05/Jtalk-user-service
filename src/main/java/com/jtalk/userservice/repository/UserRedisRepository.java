@@ -148,6 +148,16 @@ public class UserRedisRepository extends RedisRepository {
                 "{\"type\":\"USER_PROFILE_UPDATED\",\"userId\":\"%s\",\"version\":%d}".formatted(user.id(), version(user)));
     }
 
+    /** Drops the cached profile of a user whose account was deleted. */
+    public void evict(UUID userId) {
+        connection.sync().del(key(userId));
+    }
+
+    /** Tells every subscriber that this user is gone, so they drop what they cached about them. */
+    public void announceDeleted(UUID userId) {
+        connection.sync().publish(CHANNEL, "{\"type\":\"USER_DELETED\",\"userId\":\"%s\"}".formatted(userId));
+    }
+
     static String key(UUID userId) {
         return userKey("profile", userId);
     }

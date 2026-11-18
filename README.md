@@ -93,6 +93,7 @@ Errors are RFC 9457 `application/problem+json` with a stable `type` such as `urn
 | Method & path | Purpose |
 |---|---|
 | `POST /me` / `GET /me` / `PATCH /me` | Create your profile (once; the country is optional) / read / partial update (`""` clears `bio` and `avatarUrl`; the username is fixed). `avatarUrl` is an `https` URL or a path of the front end such as `/avatars/avatar-03.svg`. Both writes take `learningLanguages: [{languageCode, proficiencyLevel}]` (see below), and every profile response lists `nativeLanguages` and `learningLanguages` |
+| `DELETE /me` | Deletes your account for good: the profile, your languages, every follow to or from you and every block by or against you go with it (the database cascades), other people's follower and following numbers are corrected, and the cached copies are dropped and `USER_DELETED` is announced on `user-events`. Idempotent, `204`; you can sign up again. It does not delete the Auth0 identity (that needs the Management API) |
 | `GET /{id}` | Any user's profile, with their languages (`/batch` summaries stay light: no languages, no extra query) |
 | `POST /batch` `{ids}` | Summaries (name, avatar, country, language) for up to 500 ids, in the order asked; unknown ids are left out |
 | `GET /search?q=&size=` | Username or display-name prefix, handle matches first; never yourself, suspended users, or anyone blocked either way |

@@ -36,6 +36,14 @@ public interface FollowRepository extends GenericRepository<User, UUID> {
             """, nativeQuery = true)
     int deleteBetween(UUID a, UUID b);
 
+    /** Everyone who follows the user or is followed by them: whose follower and following counts a deletion changes. */
+    @Query(value = """
+            SELECT following_id FROM user_service.follows WHERE follower_id = :userId
+            UNION
+            SELECT follower_id FROM user_service.follows WHERE following_id = :userId
+            """, nativeQuery = true)
+    List<UUID> findNeighbours(UUID userId);
+
     /** A chunk of the accounts the user follows, newest first, strictly after the given position. */
     @Query(value = """
             SELECT following_id AS user_id, created_at FROM user_service.follows

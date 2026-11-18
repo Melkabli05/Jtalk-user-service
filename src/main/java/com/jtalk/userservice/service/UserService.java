@@ -40,6 +40,13 @@ public interface UserService {
 
     UserProfileResponse updateProfile(@NonNull UUID userId, @Valid @NotNull UpdateProfileRequest request);
 
+    /**
+     * Deletes the caller's account for good: the profile, their languages, every follow to or from them and every block they made or
+     * received go with it (the database cascades), and the cached copies are dropped. Asking again for an account that is already gone is
+     * not an error. They may sign up again afterwards.
+     */
+    void deleteAccount(@NonNull UUID userId);
+
     /** Active users whose username or display name starts with {@code query}, never ones who blocked the caller or whom the caller blocked. */
     List<UserSummaryResponse> search(@NonNull UUID viewerId, @NotBlank String query,
                                      @Min(1) @Max(UserConstants.MAX_SEARCH_RESULTS) int size);
