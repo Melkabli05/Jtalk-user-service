@@ -15,16 +15,16 @@ services:
     # Liveness only: it answers without a token and does not depend on the database, so a slow Neon wake-up never restarts the service.
     healthCheckPath: /health/liveness
     envVars:
-      # Auth0: users log in there and this service only checks the access tokens it issues. AUTH0_DOMAIN is the tenant's domain without
-      # https://, e.g. your-tenant.eu.auth0.com; AUTH0_AUDIENCE is the identifier of the API created in Auth0 for this service.
-      # Render asks for both when the Blueprint is created.
+      # Auth0: users log in there and this service only checks the access tokens it issues (signature, issuer, audience, expiry). Neither
+      # value is a secret, so both are set here: AUTH0_DOMAIN is the tenant's domain without https://, and AUTH0_AUDIENCE is the identifier of
+      # the API created in Auth0 for this service (APIs > Create API; the identifier is just a name, it does not have to resolve).
       - key: AUTH0_DOMAIN
-        sync: false
+        value: dev-fffl5f080xabhazz.us.auth0.com
       - key: AUTH0_AUDIENCE
-        sync: false
-      # Optional: restrict which frontend may call this API (a regular expression). Any origin until set, e.g.
-      # https://app\.example\.com|http://localhost:4200
+        value: https://api.jtalk.app
+      # Which frontend may call this API, as a regular expression: the deployed app on Vercel and the local dev server. (Vercel preview
+      # deployments have other host names, so they are refused until added here.)
       - key: CORS_ALLOWED_ORIGINS
-        sync: false
+        value: 'https://jtalk-mocha\.vercel\.app|http://localhost:4200'
       # PostgreSQL is not set here: the "cloud" profile (application-cloud.yml) uses the same Neon database as the live communication
       # service, in a schema of its own (user_service).
