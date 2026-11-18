@@ -1,0 +1,38 @@
+# The "cloud" profile, which the Dockerfile turns on (MICRONAUT_ENVIRONMENTS=cloud): the hosted free-tier database, hardcoded on purpose so
+# the app starts with nothing but MICRONAUT_ENVIRONMENTS=cloud (plus JWT_SECRET, see application.yml).
+#
+#   PostgreSQL  Neon    the same database as the live communication service (the app connects through Neon's pooler; Flyway
+#                       migrates over the direct endpoint, because the pooler runs PgBouncer in transaction mode, which breaks the
+#                       advisory locks Flyway takes)
+#
+# This repository is public, so these credentials are public too. They guard a free-tier database; if they are ever misused, rotate
+# them in the Neon console and change them here and in the live communication service. Environment variables still win over this
+# file (DATASOURCES_DEFAULT_URL, FLYWAY_DATASOURCES_DEFAULT_URL, ...). Nothing else (the tests, a plain `./gradlew run`) loads it.
+#
+# Sharing the database means sharing its public schema with the live communication service, and each service keeps its own Flyway
+# history. So this service lives in its own schema, "user_service": Flyway creates it and keeps its migrations and history table
+# there (application.yml sets that for every profile). Tables mapped by this service must name that schema, e.g. @MappedEntity(value = "users", schema = "user_service"), because
+# the pooler does not honour a per-connection search_path.
+#
+# Hosts such as Render say which port to bind through PORT (on all interfaces, which is Micronaut's default). It is set here, not in
+# application.yml, because an explicit port there would also stop the tests from picking a random one.
+micronaut:
+  server:
+    port: ${PORT:8080}
+
+datasources:
+  default:
+    url: jdbc:postgresql://ep-calm-shape-beap5h80-pooler.c-9.us-east-2.aws.neon.tech/neondb?sslmode=require
+    username: neondb_owner
+    password: npg_zmR3lt2yPadv
+
+# Redis on Upstash: the same instance as the live communication service. This service only touches keys that start with "user:".
+redis:
+  uri: rediss://default:gQAAAAAAAxsoAAIgcDJiOWU5ZWRhMjJkMjE0ZGJhODFmZjY0MGU2ODc4YTVlMA@proud-mayfly-203560.upstash.io:6379
+
+flyway:
+  datasources:
+    default:
+      url: jdbc:postgresql://ep-calm-shape-beap5h80.c-9.us-east-2.aws.neon.tech/neondb?sslmode=require
+      user: neondb_owner
+      password: npg_zmR3lt2yPadv

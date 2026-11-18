@@ -1,0 +1,24 @@
+# What the image build never needs: it keeps the build context small and stops local state and secrets leaking in.
+.git
+.gitignore
+.gradle
+build
+out
+target
+.idea
+.vscode
+*.iml
+.DS_Store
+
+# Never bake configuration or keys into an image: they come from the environment at run time.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+application-local*.yml
+
+Dockerfile
+.dockerignore
+README.md
