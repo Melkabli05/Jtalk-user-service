@@ -44,6 +44,44 @@ live communication service): `users`, `user_languages`, `follows`, `blocks`.
 - **Matchmaking.** `GET /users/matchmaking` returns users who are *native* in what you are learning and *learning* what you speak, minus anyone blocked
   either way, newest first, keyset-paginated.
 
+## Performance
+
+Measured, not guessed: the queries were run under `EXPLAIN (ANALYZE, BUFFERS)` on a throwaway PostgreSQL 18 holding 500k users, 1.2M language
+rows, 220k blocks and 1.6M follows (`perf/` has the seed and the scripts), and the Redis traffic was counted per request.
+
+**Database** (page of 20, one viewer, warm cache):
+
+| Query | Before | After | What changed |
+|---|---|---|---|
+| Matchmaking, first page (13.7k matching users) | 148 ms | 4 ms | `idx_users_active_newest`: walk active users newest-first and probe their two language rows, stopping at the page. Before, the planner found **every** match, joined and sorted them all, and kept 21, so a page cost the number of matches |
+| Matchmaking, deep page | 19 ms | 1.8 ms | same index; the keyset cursor `(created_at, id) < (?, ?)` is now a range on it |
+| Matchmaking, rare pair (4.5k matches) | 25-34 ms | 22 ms | no regression: the planner still prefers the selective side |
+| Search by handle, common prefix | 100 ms | 0.08 ms | a C-collated index and a **range** (`>= 'sa' AND < 'sa<max>'`) instead of `LIKE`, ordered by the same expression |
+| Search by handle, prefix nobody has, generic prepared plan | 299 ms (full scan) | 0.03 ms | a bind-parameter `LIKE` cannot be a range in a generic plan; a range predicate can |
+| Search by display name | 14 ms | 0.09 ms | index on `(lower(display_name) COLLATE "C", id)` |
+| Rebuild a popular account's followers (1000-row chunk) | 21 ms | 0.3-1.4 ms | `(following_id, created_at DESC, follower_id DESC)` makes it an index-only scan |
+
+Search runs as two index ranges that stop after one page (handle matches first, then display names), so its cost is the page and not the number
+of matches. PostgreSQL never switched these statements to a generic plan in a varied run (`perf/04-plan-cache.sql`), so matchmaking keeps its fast
+custom plans without driver tricks.
+
+**Redis round trips** (what a request waits on over the network; counted by `PerformanceBudgetTest`, which fails if one regresses):
+
+| Request | Before | After |
+|---|---|---|
+| A profile's counts and follow flags | 7, one after another | 1 |
+| A page of followers | 5 | 2 (the page and its size, then the profiles of the page) |
+| Following someone already followed | 4 + a SQL query | 1 |
+| Following someone new | 7 | 3 |
+| Resolving a room of 200 people, cold cache | 200 script calls, one at a time | 1 (the script is loaded once and called by digest) |
+| Resolving a room, warm cache | 1 | 1 |
+
+How: a loaded set holds a marker, so "is it cached" is `ZCARD > 0` and needs no `EXISTS`; independent commands are sent together on the one
+shared connection and awaited once (never by turning auto-flush off, which is unsafe on a shared connection); existence checks run only on the
+cold path, because a cached set already proves the user exists; a rebuild streams its chunks to Redis without waiting for each.
+
+The image also runs with `-XX:+UseCompactObjectHeaders`, which shrinks every object on a small instance.
+
 ## API (under `/api/v1/users`)
 
 Every call needs `Authorization: Bearer <Auth0 access token>`; `me` is the user that token names (its user-id claim, a UUID, the same id the live
@@ -55,7 +93,7 @@ Errors are RFC 9457 `application/problem+json` with a stable `type` such as `urn
 | `POST /me` / `GET /me` / `PATCH /me` | Create your profile (once; the country is optional) / read / partial update (`""` clears `bio` and `avatarUrl`; the username is fixed). `avatarUrl` is an `https` URL or a path of the front end such as `/avatars/avatar-03.svg` |
 | `GET /{id}` | Any user's profile |
 | `POST /batch` `{ids}` | Summaries (name, avatar, country, language) for up to 500 ids, in the order asked; unknown ids are left out |
-| `GET /search?q=&size=` | Username or display-name prefix; never yourself, suspended users, or anyone blocked either way |
+| `GET /search?q=&size=` | Username or display-name prefix, handle matches first; never yourself, suspended users, or anyone blocked either way |
 | `GET /matchmaking?nativeLang=&learningLang=&size=&afterCreatedAt=&afterId=` | Language-exchange partners; the languages default to yours |
 | `GET /me/languages`, `GET /{id}/languages` | The matrix: native languages and learning languages with levels |
 | `POST /me/languages` `{languageCode, languageType, proficiencyLevel}` / `DELETE /me/languages/{code}` | List a language (or change a level) / remove one (not your primary native language) |
@@ -138,5 +176,5 @@ endpoints. The custom code that remains has no built-in equivalent:
   followers are not.
 - **A follow made while that user's set is being rebuilt can be missing from it** until the set expires (6 h) or any block drops it.
 - **A Redis failure after a database commit is only logged**: the cached profile can stay stale until it expires (24 h). Follow sets are dropped instead.
-- **Search is by prefix** (username or display name), not fuzzy.
+- **Search is by prefix** (username or display name), not fuzzy; it compares bytes, so letters with accents or other cases only match when typed the same way (display names are compared lowercased).
 - Several instances have not been exercised; nothing here is instance-local.

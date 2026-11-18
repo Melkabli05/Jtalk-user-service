@@ -4,6 +4,7 @@ import com.jtalk.userservice.config.UserProperties;
 import com.jtalk.userservice.domain.entity.User;
 import com.jtalk.userservice.domain.enums.UserStatus;
 import io.lettuce.core.RedisFuture;
+import io.lettuce.core.RedisNoScriptException;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
@@ -55,6 +56,8 @@ public class UserRedisRepository extends RedisRepository {
             """;
 
     private final long ttlSeconds;
+    /** SHA-1 Redis gave the script when it was loaded; null until first needed, and again after Redis forgets it. */
+    private volatile String putDigest;
 
     public UserRedisRepository(StatefulRedisConnection<String, String> connection, UserProperties properties) {
         super(connection);
@@ -79,6 +82,56 @@ public class UserRedisRepository extends RedisRepository {
 
     /** @return true if the profile was stored, false if Redis already held a copy that is as new or newer */
     public boolean put(User user) {
+        Long stored = connection.sync().eval(PUT_IF_NEWER, ScriptOutputType.INTEGER, new String[]{key(user.id())}, scriptArguments(user));
+        return stored != null && stored == 1;
+    }
+
+    /**
+     * Caches many profiles in one round trip (a cold room fills in everyone it lacked). The script is loaded once and called by its
+     * digest, so a batch of 200 sends 200 short commands together instead of waiting for 200 answers one by one.
+     */
+    public void putAll(Collection<User> users) {
+        if (users.size() <= 1) {
+            users.forEach(this::put);
+            return;
+        }
+        RedisAsyncCommands<String, String> redis = connection.async();
+        String digest = putDigest();
+        List<RedisFuture<?>> writes = new ArrayList<>(users.size());
+        for (User user : users) {
+            writes.add(redis.evalsha(digest, ScriptOutputType.INTEGER, new String[]{key(user.id())}, scriptArguments(user)));
+        }
+        try {
+            await(writes.toArray(RedisFuture<?>[]::new));
+        } catch (RuntimeException failure) {
+            if (!isUnknownScript(failure)) {
+                throw failure;
+            }
+            putDigest = null;   // Redis restarted or flushed its scripts: the next batch loads it again, and this one is written the slow way
+            users.forEach(this::put);
+        }
+    }
+
+    private String putDigest() {
+        String digest = putDigest;
+        if (digest == null) {
+            digest = connection.sync().scriptLoad(PUT_IF_NEWER);
+            putDigest = digest;
+        }
+        return digest;
+    }
+
+    private static boolean isUnknownScript(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof RedisNoScriptException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** TTL, version, then the hash's field/value pairs: what {@link #PUT_IF_NEWER} expects after its key. */
+    private String[] scriptArguments(User user) {
         List<String> args = new ArrayList<>();
         args.add(String.valueOf(ttlSeconds));
         args.add(String.valueOf(version(user)));
@@ -86,12 +139,7 @@ public class UserRedisRepository extends RedisRepository {
             args.add(field);
             args.add(value);
         });
-        Long stored = connection.sync().eval(PUT_IF_NEWER, ScriptOutputType.INTEGER, new String[]{key(user.id())}, args.toArray(String[]::new));
-        return stored != null && stored == 1;
-    }
-
-    public void putAll(Collection<User> users) {
-        users.forEach(this::put);
+        return args.toArray(String[]::new);
     }
 
     /** Tells every subscriber that this user's profile changed. */

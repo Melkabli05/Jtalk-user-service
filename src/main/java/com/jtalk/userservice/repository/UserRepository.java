@@ -26,18 +26,31 @@ public interface UserRepository extends CrudRepository<User, UUID> {
             """;
 
     /**
-     * Typeahead: active users whose username or display name starts with the prefix. {@code prefix} is already lowercased and escaped
-     * with {@code !} for LIKE; the {@code text_pattern_ops} indexes serve both comparisons.
+     * Typeahead by handle: active users whose username lies in {@code [rangeStart, rangeEnd)}, which is "starts with the prefix". It is a
+     * range on a C-collated index (V3) and not a LIKE: a range can be served by any prepared-statement plan, while LIKE with a bind
+     * parameter falls back to scanning the whole table once the plan turns generic. Ordered by the same expression, so the index returns
+     * the first {@code limit} rows and stops.
      */
     @Query(value = """
             SELECT u.* FROM user_service.users u
             WHERE u.status = 'ACTIVE' AND u.id <> :viewerId
-              AND (u.username LIKE :prefix ESCAPE '!' OR lower(u.display_name) LIKE :prefix ESCAPE '!')
+              AND u.username COLLATE "C" >= :rangeStart AND u.username COLLATE "C" < :rangeEnd
             """ + NOT_BLOCKED + """
-            ORDER BY u.username
+            ORDER BY u.username COLLATE "C"
             LIMIT :limit
             """, nativeQuery = true)
-    List<User> searchByPrefix(UUID viewerId, String prefix, int limit);
+    List<User> searchByUsernamePrefix(UUID viewerId, String rangeStart, String rangeEnd, int limit);
+
+    /** The same by display name (compared lowercased), for a person whose handle does not start with what was typed. */
+    @Query(value = """
+            SELECT u.* FROM user_service.users u
+            WHERE u.status = 'ACTIVE' AND u.id <> :viewerId
+              AND lower(u.display_name) COLLATE "C" >= :rangeStart AND lower(u.display_name) COLLATE "C" < :rangeEnd
+            """ + NOT_BLOCKED + """
+            ORDER BY lower(u.display_name) COLLATE "C", u.id
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<User> searchByDisplayNamePrefix(UUID viewerId, String rangeStart, String rangeEnd, int limit);
 
     /**
      * Language-exchange partners: users who are native in what the viewer is learning AND are learning what the viewer is native in.

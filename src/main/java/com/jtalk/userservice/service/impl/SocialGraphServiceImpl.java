@@ -23,8 +23,11 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Follows and blocks. A follow is written to PostgreSQL first and then recorded in the Redis sets; if Redis fails after the database
@@ -53,27 +56,35 @@ class SocialGraphServiceImpl implements SocialGraphService {
         if (followerId.equals(targetId)) {
             throw ProblemType.CANNOT_FOLLOW_SELF.because("You cannot follow yourself");
         }
-        userService.getRequiredUser(followerId);
-        if (!userService.getRequiredUser(targetId).isActive()) {
+        // The common repeat (a double tap, a retry) is this one read and nothing else. A block removes the follow, so a set that holds it
+        // proves no block exists, and the follow could not have been made without both users.
+        SocialGraphRedisRepository.Membership following = graph.membership(followerId, GraphDirection.FOLLOWING, targetId);
+        if (following.member()) {
+            return;
+        }
+        User target = requireBoth(followerId, targetId).get(targetId);
+        if (!target.isActive()) {
             throw ProblemType.USER_NOT_FOUND.because("User " + targetId + " does not exist");
         }
         if (blocks.existsBetween(followerId, targetId)) {
             throw ProblemType.FOLLOW_NOT_ALLOWED.because("You cannot follow this user");
         }
 
-        ensureLoaded(followerId, GraphDirection.FOLLOWING);
-        if (graph.contains(followerId, GraphDirection.FOLLOWING, targetId)) {
-            return;   // the common repeat: one ZSCORE, no database
+        if (!following.loaded()) {
+            ensureLoaded(followerId, GraphDirection.FOLLOWING);
+            following = graph.membership(followerId, GraphDirection.FOLLOWING, targetId);
+            if (following.member()) {
+                return;   // the set was cold, so only now can it say the follow already exists
+            }
         }
-        if (graph.size(followerId, GraphDirection.FOLLOWING) >= properties.maxFollowing()) {
+        if (following.size() >= properties.maxFollowing()) {
             throw ProblemType.FOLLOW_LIMIT_REACHED.because("You can follow at most " + properties.maxFollowing() + " accounts");
         }
 
         Instant now = Instant.now();
         follows.follow(followerId, targetId, now);
         try {
-            graph.addIfLoaded(followerId, GraphDirection.FOLLOWING, targetId, now);
-            graph.addIfLoaded(targetId, GraphDirection.FOLLOWERS, followerId, now);
+            graph.recordFollow(followerId, targetId, now);
         } catch (RuntimeException e) {
             log.warn("Follow {} -> {} saved, but Redis could not record it: dropping both users' cached graphs", followerId, targetId, e);
             dropCachedGraphs(followerId, targetId);
@@ -84,8 +95,7 @@ class SocialGraphServiceImpl implements SocialGraphService {
     public void unfollow(UUID followerId, UUID targetId) {
         follows.unfollow(followerId, targetId);
         try {
-            graph.remove(followerId, GraphDirection.FOLLOWING, targetId);
-            graph.remove(targetId, GraphDirection.FOLLOWERS, followerId);
+            graph.recordUnfollow(followerId, targetId);
         } catch (RuntimeException e) {
             log.warn("Unfollow {} -> {} saved, but Redis could not record it: dropping both users' cached graphs", followerId, targetId, e);
             dropCachedGraphs(followerId, targetId);
@@ -104,17 +114,17 @@ class SocialGraphServiceImpl implements SocialGraphService {
 
     @Override
     public SocialStatsResponse stats(UUID viewerId, UUID userId) {
-        userService.getRequiredUser(userId);
-        ensureLoaded(userId, GraphDirection.FOLLOWERS);
-        ensureLoaded(userId, GraphDirection.FOLLOWING);
+        // One round trip answers everything for a user whose sets are cached. A loaded set also proves the user exists (sets are only
+        // built for users that do), so the existence check and the rebuild wait for the cold read.
+        SocialGraphRedisRepository.Stats stats = graph.stats(userId, viewerId);
+        if (!stats.loaded()) {
+            userService.getRequiredUser(userId);
+            ensureLoaded(userId, GraphDirection.FOLLOWERS);
+            ensureLoaded(userId, GraphDirection.FOLLOWING);
+            stats = graph.stats(userId, viewerId);
+        }
         boolean self = viewerId.equals(userId);
-        // Both flags come from the two sets just loaded: the viewer is in the user's followers if they follow them, and in the user's
-        // following if the user follows them back.
-        return new SocialStatsResponse(
-                graph.size(userId, GraphDirection.FOLLOWERS),
-                graph.size(userId, GraphDirection.FOLLOWING),
-                !self && graph.contains(userId, GraphDirection.FOLLOWERS, viewerId),
-                !self && graph.contains(userId, GraphDirection.FOLLOWING, viewerId));
+        return new SocialStatsResponse(stats.followers(), stats.following(), !self && stats.followedByViewer(), !self && stats.followsViewer());
     }
 
     @Override
@@ -123,8 +133,7 @@ class SocialGraphServiceImpl implements SocialGraphService {
         if (blockerId.equals(targetId)) {
             throw ProblemType.CANNOT_BLOCK_SELF.because("You cannot block yourself");
         }
-        userService.getRequiredUser(blockerId);
-        userService.getRequiredUser(targetId);
+        requireBoth(blockerId, targetId);
         blocks.block(blockerId, targetId, Instant.now());
         follows.deleteBetween(blockerId, targetId);
         invalidated.publishEvent(new FollowGraphInvalidated(Set.of(blockerId, targetId)));
@@ -141,10 +150,26 @@ class SocialGraphServiceImpl implements SocialGraphService {
     }
 
     private FollowListResponse list(UUID userId, GraphDirection direction, int page, int size) {
-        userService.getRequiredUser(userId);
-        ensureLoaded(userId, direction);
-        List<UUID> ids = graph.page(userId, direction, (long) page * size, size);
-        return new FollowListResponse(userService.getSummaries(ids), page, size, graph.size(userId, direction));
+        SocialGraphRedisRepository.Page found = graph.page(userId, direction, (long) page * size, size);
+        if (!found.loaded()) {
+            userService.getRequiredUser(userId);
+            ensureLoaded(userId, direction);
+            found = graph.page(userId, direction, (long) page * size, size);
+        }
+        return new FollowListResponse(userService.getSummaries(found.ids()), page, size, found.total());
+    }
+
+    /** Both users in one cache read (and one query for any the cache lacks); a missing one is the usual 404. */
+    private Map<UUID, User> requireBoth(UUID callerId, UUID otherId) {
+        Map<UUID, User> found = userService.findUsers(List.of(callerId, otherId)).stream()
+                .collect(Collectors.toMap(User::id, Function.identity()));
+        if (!found.containsKey(callerId)) {
+            throw ProblemType.USER_NOT_FOUND.because("You have no profile yet: create it first");
+        }
+        if (!found.containsKey(otherId)) {
+            throw ProblemType.USER_NOT_FOUND.because("User " + otherId + " does not exist");
+        }
+        return found;
     }
 
     /** Rebuilds the set from PostgreSQL if Redis does not hold it (first read, expiry, eviction, a Redis restart). */

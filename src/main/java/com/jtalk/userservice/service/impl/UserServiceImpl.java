@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -40,7 +41,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class UserServiceImpl implements UserService {
 
-    private static final String LIKE_ESCAPE = "!";
+    /** The last code point there is: everything that starts with a prefix sorts before the prefix followed by this. */
+    private static final String PAST_ANY_TEXT = Character.toString(Character.MAX_CODE_POINT);
 
     private final UserRepository users;
     private final UserLanguageRepository languages;
@@ -125,8 +127,16 @@ class UserServiceImpl implements UserService {
 
     @Override
     public List<UserSummaryResponse> search(UUID viewerId, String query, int size) {
-        String prefix = escapeLike(query.strip().toLowerCase(Locale.ROOT)) + "%";
-        return mapper.toSummaries(users.searchByPrefix(viewerId, prefix, size));
+        String start = query.strip().toLowerCase(Locale.ROOT);
+        String end = start + PAST_ANY_TEXT;
+        // Handles first: someone typing "sar" means the handle sara_k before a Sara with another handle. Each query is an index range
+        // that stops after one page, so the cost is the page, not the number of matches.
+        Map<UUID, User> found = new LinkedHashMap<>();
+        users.searchByUsernamePrefix(viewerId, start, end, size).forEach(user -> found.put(user.id(), user));
+        if (found.size() < size) {
+            users.searchByDisplayNamePrefix(viewerId, start, end, size).forEach(user -> found.putIfAbsent(user.id(), user));
+        }
+        return mapper.toSummaries(found.values().stream().limit(size).toList());
     }
 
     /** The primary native language always has a NATIVE row: a language the user was learning becomes native, and a new one is added. */
@@ -165,10 +175,6 @@ class UserServiceImpl implements UserService {
         } catch (RuntimeException e) {
             log.warn("Could not cache {} profile(s)", loaded.size(), e);
         }
-    }
-
-    private static String escapeLike(String text) {
-        return text.replace(LIKE_ESCAPE, LIKE_ESCAPE + LIKE_ESCAPE).replace("%", LIKE_ESCAPE + "%").replace("_", LIKE_ESCAPE + "_");
     }
 
     private static RuntimeException usernameTaken(String username) {

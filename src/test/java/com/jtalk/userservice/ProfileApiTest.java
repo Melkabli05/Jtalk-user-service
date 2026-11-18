@@ -116,6 +116,57 @@ class ProfileApiTest extends ApiTestBase {
         assertEquals("MA", changed.get("countryCode"));
     }
 
+    private void registerAs(String user, String username, String displayName) {
+        post("/api/v1/users/me", user, Map.of("username", username, "displayName", displayName, "nativeLanguage", "en"));
+    }
+
+    private List<String> found(String query, String asUser) {
+        return getList("/api/v1/users/search?" + query, asUser).stream().map(u -> (String) u.get("username")).toList();
+    }
+
+    @Test
+    void searchRanksHandleMatchesBeforeDisplayNameMatches_whateverTheirOrder() {
+        register("viewer");
+        registerAs("u1", "aaron", "Samir A");   // matches by display name, and its handle sorts first
+        registerAs("u2", "sam2", "Q");           // matches by handle
+
+        assertEquals(List.of("sam2", "aaron"), found("q=sam", "viewer"), "the handle someone typed beats a name that merely starts the same");
+    }
+
+    @Test
+    void searchWorksInAnyScript() {
+        register("viewer");
+        registerAs("u1", "mona9", "منى");
+
+        assertEquals(List.of("mona9"), found("q=%D9%85%D9%86", "viewer"), "an Arabic prefix finds the Arabic display name");
+        assertEquals(List.of(), found("q=%D9%85%D9%86%D9%89%D8%A7", "viewer"), "and a longer prefix than the name does not");
+    }
+
+    @Test
+    void searchIsCappedAtThePageAndNeverRepeatsAPerson() {
+        register("viewer");
+        for (int i = 1; i <= 5; i++) {
+            registerAs("u" + i, "sam" + i, "Sam " + i);   // each matches by handle AND by display name
+        }
+
+        List<String> page = found("q=sam&size=3", "viewer");
+        List<String> all = found("q=sam&size=50", "viewer");
+
+        assertEquals(List.of("sam1", "sam2", "sam3"), page);
+        assertEquals(List.of("sam1", "sam2", "sam3", "sam4", "sam5"), all, "no one appears twice for matching both ways");
+    }
+
+    @Test
+    void searchTreatsWhatTheUserTypedAsText_notAsAPattern() {
+        register("viewer");
+        registerAs("u1", "sam_x", "Sam");
+
+        assertEquals(List.of("sam_x"), found("q=sam_", "viewer"));
+        assertEquals(List.of(), found("q=sa_", "viewer"), "an underscore is a character, not a wildcard");
+        assertEquals(List.of(), found("q=%25", "viewer"));
+        assertEquals(List.of(), found("q=%5C", "viewer"), "nor is a backslash");
+    }
+
     @Test
     void anUnknownUserIsA404Problem() {
         assertProblem(HttpStatus.NOT_FOUND, "user-not-found", () -> get(userPath("ghost", ""), "sara"));

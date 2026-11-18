@@ -49,8 +49,10 @@ COPY --link --chown=10001:10001 --from=build /workspace/build/docker/main/layers
 COPY --link --chown=10001:10001 --from=build /workspace/build/docker/main/layers/app /home/app/
 COPY --link --chown=10001:10001 --from=build /workspace/build/docker/main/layers/resources /home/app/resources
 USER 10001:10001
-# Size the heap from the container's memory limit rather than the JVM's small default share of it.
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0" \
+# Size the heap from the container's memory limit rather than the JVM's small default share of it, and use the compact object header
+# (a product flag in Java 25: every object is smaller, which matters most on a small instance). The collector is left to the JVM, which
+# picks the low-overhead serial one for a container this small.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+UseCompactObjectHeaders" \
     MICRONAUT_ENVIRONMENTS=cloud
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/home/app/application.jar"]
