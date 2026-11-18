@@ -6,33 +6,36 @@ import com.jtalk.userservice.dto.response.LanguageEntryResponse;
 import com.jtalk.userservice.dto.response.LanguageMatrixResponse;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
-import org.mapstruct.Mapper;
-import org.mapstruct.MappingConstants;
-import org.mapstruct.ReportingPolicy;
+import io.micronaut.context.annotation.Mapper;
+import jakarta.inject.Singleton;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Domain -> API mappings, generated at compile time by MapStruct. A DTO field with no source fails the build
- * ({@code unmappedTargetPolicy = ERROR}) instead of silently going out empty.
+ * Domain -> API mappings, generated at compile time by Micronaut's own {@link Mapper} (properties are matched by name, and a response
+ * property with no source fails the build instead of silently going out empty).
  */
-@Mapper(componentModel = MappingConstants.ComponentModel.JAKARTA, unmappedTargetPolicy = ReportingPolicy.ERROR)
+@Singleton
 public interface ApiMapper {
 
+    @Mapper
     UserProfileResponse toProfile(User user);
 
+    @Mapper
     UserSummaryResponse toSummary(User user);
 
-    List<UserSummaryResponse> toSummaries(List<User> users);
-
+    @Mapper
     LanguageEntryResponse toEntry(UserLanguage language);
 
+    default List<UserSummaryResponse> toSummaries(List<User> users) {
+        return users.stream().map(this::toSummary).toList();
+    }
+
     default LanguageMatrixResponse toMatrix(UUID userId, List<UserLanguage> languages) {
-        Comparator<String> byCode = Comparator.naturalOrder();
         return new LanguageMatrixResponse(userId,
-                languages.stream().filter(UserLanguage::isNative).map(UserLanguage::languageCode).sorted(byCode).toList(),
+                languages.stream().filter(UserLanguage::isNative).map(UserLanguage::languageCode).sorted().toList(),
                 languages.stream().filter(language -> !language.isNative())
                         .sorted(Comparator.comparing(UserLanguage::languageCode))
                         .map(this::toEntry).toList());

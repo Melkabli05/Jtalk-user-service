@@ -9,17 +9,24 @@ Java 25 · Micronaut 5 · PostgreSQL · Redis.
 
 ```
 src/main/java/com/jtalk/userservice/
-├── config/        UserConstants, UserProperties, ProblemType (RFC 9457 problems), UuidSubjectClaimsValidator, ClockFactory
+├── config/        UserConstants, UserProperties, ProblemType (RFC 9457 problems), UuidSubjectClaimsValidator
 ├── controller/    UserProfileController, SocialGraphController (+ @CurrentUser)
 ├── service/       UserService, LanguageService, SocialGraphService; impl/ with their implementations and CacheSyncListener
 ├── repository/    UserRepository, UserLanguageRepository, FollowRepository, BlockRepository (JDBC);
-│                  UserRedisRepository (profile hashes), SocialGraphRedisRepository (follow sorted sets), Lua scripts
+│                  UserRedisRepository (profile hashes), SocialGraphRedisRepository (follow sorted sets)
 ├── domain/        entity/ (User, UserLanguage), enums/, event/, model/
-└── dto/           request/, response/ and ApiMapper (MapStruct)
-src/main/resources/  application.yml (+ cloud), db/migration/, lua/
+└── dto/           request/, response/ and ApiMapper (Micronaut @Mapper)
+src/main/resources/  application.yml (+ cloud), db/migration/
 ```
 
-`ArchitectureTest` enforces the layering (controller -> service -> repository -> domain, never upwards; only interfaces outside `service/impl`).
+`ArchitectureTest` enforces the shape (20 rules, on our own code, not Micronaut's generated classes):
+
+- **Layering:** controller -> service -> repository -> domain, never upwards; `config` depends on nothing of ours; no package cycles; only service
+  interfaces are used outside `service/impl`.
+- **Placement and names:** controllers are `*Controller`, package-private and `@Secured`; service interfaces are `*Service` and `@Validated`;
+  implementations are package-private; repositories are `*Repository`; `@MappedEntity` classes live in `domain/entity`; DTOs are records named
+  `*Request` / `*Response` in `dto/request` / `dto/response`.
+- **Hygiene:** constructor injection only, no `System.out`, no `java.util.logging`.
 
 ## How it works
 
@@ -29,7 +36,7 @@ live communication service): `users`, `user_languages`, `follows`, `blocks`.
 - **Profile cache.** A profile is a Redis hash `user:profile:{id}` (24 h). `POST /users/batch` resolves a whole room (up to 500 ids) with one pipelined
   Redis read and one query for whatever was missing. A write goes to PostgreSQL in a transaction; after the commit the new profile is stored in Redis
   and a message `{"type":"USER_PROFILE_UPDATED","userId":...,"version":...}` is published on the Redis channel `user-events`, so other services can drop
-  what they cached. The store is `put_profile_if_newer.lua`: a slow reader that loaded an old profile can never overwrite a newer one. If Redis is
+  what they cached. The store is a small Lua script (`UserRedisRepository.PUT_IF_NEWER`): a slow reader that loaded an old profile can never overwrite a newer one. If Redis is
   down, reads fall back to PostgreSQL.
 - **Follow graph.** `user:following:{id}` and `user:followers:{id}` are sorted sets (member = other user, score = follow time). "Does A follow B" is a
   `ZSCORE`, a count is a `ZCARD`, a page is a `ZREVRANGE`. A set is built from PostgreSQL on first use, in chunks, into a temporary key that is renamed
@@ -74,6 +81,18 @@ Deployed: set `DATASOURCES_DEFAULT_URL/_USERNAME/_PASSWORD`, `REDIS_URI` and `JW
 (`application-cloud.yml`: Neon and Upstash, hardcoded like the live service's, so those credentials are public; rotate them if misused). The Upstash
 Redis is shared with the live communication service; this service only uses keys that start with `user:`. `render.yaml` is the Render blueprint.
 
+## Built-in first
+
+Everything the framework provides is used as is: Micronaut Data (declarative JDBC repositories, `@DateCreated`/`@DateUpdated`, derived queries,
+DTO projections), Security JWT, Validation, Problem JSON, Flyway, `@ConfigurationProperties`, `@TransactionalEventListener`, `@Mapper`, health
+endpoints. The custom code that remains has no built-in equivalent:
+
+- **Pipelined profile reads and the "never overwrite a newer profile" write** (`UserRedisRepository`): Micronaut Cache does one `GET` per key and
+  cannot refuse an older value, so a full room would cost one round trip per participant.
+- **The follow sorted sets** (`SocialGraphRedisRepository`) and the **pub/sub announcement**: Micronaut has no abstraction over either.
+- **`@CurrentUser`**: with security on, Micronaut binds the `Principal` itself; the binder only exists for the `X-User-Id` mode used while security is off.
+- **`Violations`**: Micronaut Data has no exception type for a unique-constraint violation, so two simultaneous sign-ups still end in a 409.
+
 ## Known limits
 
 - **There is no sign-up or login.** This service verifies tokens (`JWT_SECRET`) but does not issue them, and a user creates their profile with
@@ -83,4 +102,4 @@ Redis is shared with the live communication service; this service only uses keys
 - **A follow made while that user's set is being rebuilt can be missing from it** until the set expires (6 h) or any block drops it.
 - **A Redis failure after a database commit is only logged**: the cached profile can stay stale until it expires (24 h). Follow sets are dropped instead.
 - **Search is by prefix** (username or display name), not fuzzy.
-- Several instances have not been exercised; nothing here is instance-local except the Lua script cache, which heals itself.
+- Several instances have not been exercised; nothing here is instance-local.

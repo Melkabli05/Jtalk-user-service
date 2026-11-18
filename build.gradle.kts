@@ -14,14 +14,8 @@ repositories {
     mavenCentral()
 }
 
-val mapstructVersion = "1.6.3"
-
 dependencies {
-    // Order matters: Lombok must run first, then MapStruct (with its Lombok bridge), then Micronaut's processors.
     annotationProcessor("org.projectlombok:lombok")
-    annotationProcessor("org.projectlombok:lombok-mapstruct-binding:0.2.0")
-    annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")
-    implementation("org.mapstruct:mapstruct:$mapstructVersion")
     annotationProcessor("io.micronaut.data:micronaut-data-processor")
     annotationProcessor("io.micronaut:micronaut-http-validation")
     annotationProcessor("io.micronaut.security:micronaut-security-processor")

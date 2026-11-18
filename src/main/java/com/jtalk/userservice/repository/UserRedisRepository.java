@@ -7,7 +7,6 @@ import io.lettuce.core.RedisFuture;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
-import io.micronaut.core.io.ResourceResolver;
 import jakarta.inject.Singleton;
 
 import java.time.Instant;
@@ -23,7 +22,7 @@ import java.util.UUID;
 
 /**
  * Profiles cached as Redis hashes, {@code user:profile:{userId}}, so rendering a room means one pipelined round trip for all its
- * participants instead of one database query each. A hash is stored with {@code put_profile_if_newer.lua}: a profile is only
+ * participants instead of one database query each. A hash is stored by {@link #PUT_IF_NEWER}: a profile is only
  * replaced by a newer one, so a reader that loaded an old copy can never overwrite what a writer has just stored.
  *
  * <p>Changes are also announced on {@link #CHANNEL} so other services can drop what they cached about the user.
@@ -36,12 +35,29 @@ public class UserRedisRepository extends RedisRepository {
 
     private static final String VERSION = "version";
 
-    private final LuaScript putIfNewer;
+    /**
+     * Stores a profile hash unless Redis already holds a copy that is as new or newer.
+     *
+     * <p>A slow reader that loaded a profile before it was changed can reach Redis after the writer has already stored the new one; without
+     * this check it would put the old one back for a day. Versions are the profile's updatedAt in epoch microseconds.
+     * KEYS[1] the hash; ARGV[1] ttl in seconds; ARGV[2] version; ARGV[3..] field, value pairs. Returns 1 if stored, 0 if the cached copy was kept.
+     * The hash is replaced, not merged, so a field that was cleared (the avatar) does not survive from the old copy.
+     */
+    private static final String PUT_IF_NEWER = """
+            local current = redis.call('HGET', KEYS[1], 'version')
+            if current and tonumber(current) >= tonumber(ARGV[2]) then
+                return 0
+            end
+            redis.call('DEL', KEYS[1])
+            redis.call('HSET', KEYS[1], unpack(ARGV, 3))
+            redis.call('EXPIRE', KEYS[1], ARGV[1])
+            return 1
+            """;
+
     private final long ttlSeconds;
 
-    public UserRedisRepository(StatefulRedisConnection<String, String> connection, ResourceResolver resolver, UserProperties properties) {
+    public UserRedisRepository(StatefulRedisConnection<String, String> connection, UserProperties properties) {
         super(connection);
-        this.putIfNewer = LuaScript.load(resolver, "lua/put_profile_if_newer.lua");
         this.ttlSeconds = properties.profileCacheTtl().toSeconds();
     }
 
@@ -70,7 +86,7 @@ public class UserRedisRepository extends RedisRepository {
             args.add(field);
             args.add(value);
         });
-        Long stored = putIfNewer.execute(connection.sync(), ScriptOutputType.INTEGER, new String[]{key(user.id())}, args.toArray(String[]::new));
+        Long stored = connection.sync().eval(PUT_IF_NEWER, ScriptOutputType.INTEGER, new String[]{key(user.id())}, args.toArray(String[]::new));
         return stored != null && stored == 1;
     }
 

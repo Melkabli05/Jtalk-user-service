@@ -21,7 +21,6 @@ import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -48,7 +47,6 @@ class SocialGraphServiceImpl implements SocialGraphService {
     private final SocialGraphRedisRepository graph;
     private final ApplicationEventPublisher<FollowGraphInvalidated> invalidated;
     private final UserProperties properties;
-    private final Clock clock;
 
     @Override
     public void follow(UUID followerId, UUID targetId) {
@@ -71,7 +69,7 @@ class SocialGraphServiceImpl implements SocialGraphService {
             throw ProblemType.FOLLOW_LIMIT_REACHED.because("You can follow at most " + properties.maxFollowing() + " accounts");
         }
 
-        Instant now = clock.instant();
+        Instant now = Instant.now();
         follows.follow(followerId, targetId, now);
         try {
             graph.addIfLoaded(followerId, GraphDirection.FOLLOWING, targetId, now);
@@ -127,7 +125,7 @@ class SocialGraphServiceImpl implements SocialGraphService {
         }
         userService.getRequiredUser(blockerId);
         userService.getRequiredUser(targetId);
-        blocks.block(blockerId, targetId, clock.instant());
+        blocks.block(blockerId, targetId, Instant.now());
         follows.deleteBetween(blockerId, targetId);
         invalidated.publishEvent(new FollowGraphInvalidated(Set.of(blockerId, targetId)));
     }

@@ -6,7 +6,6 @@ import com.jtalk.userservice.domain.model.FollowEdge;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
-import io.micronaut.core.io.ResourceResolver;
 import jakarta.inject.Singleton;
 
 import java.time.Instant;
@@ -20,7 +19,7 @@ import java.util.UUID;
  * score = when the follow was made (epoch millis). PostgreSQL stays the source of truth; a set that is not here is rebuilt from it.
  *
  * <p>A set is only ever complete or absent: it is built in a temporary key and renamed into place, and a follow is added only to a set
- * that exists ({@code zadd_if_loaded.lua}). That is what makes "does A follow B" one {@code ZSCORE} and a count one {@code ZCARD}.
+ * that exists ({@link #ADD_IF_LOADED}). That is what makes "does A follow B" one {@code ZSCORE} and a count one {@code ZCARD}.
  * A graph with no one in it still needs a key, so every set carries a {@link #SENTINEL} member with score 0, which sorts last and is
  * never reported.
  */
@@ -30,12 +29,22 @@ public class SocialGraphRedisRepository extends RedisRepository {
     static final String SENTINEL = "-";
     private static final int BUILD_TTL_SECONDS = 300;
 
-    private final LuaScript addIfLoaded;
+    /**
+     * Adds a member to a set only if that set is in Redis. A set that is not there is rebuilt from PostgreSQL the next time it is read, and
+     * that rebuild already includes this follow, so adding to a missing key would only create a set that looks complete but holds one member.
+     * NX keeps an existing member's original timestamp. KEYS[1] the set; ARGV[1] score (epoch millis); ARGV[2] member.
+     */
+    private static final String ADD_IF_LOADED = """
+            if redis.call('EXISTS', KEYS[1]) == 1 then
+                return redis.call('ZADD', KEYS[1], 'NX', ARGV[1], ARGV[2])
+            end
+            return 0
+            """;
+
     private final long ttlSeconds;
 
-    public SocialGraphRedisRepository(StatefulRedisConnection<String, String> connection, ResourceResolver resolver, UserProperties properties) {
+    public SocialGraphRedisRepository(StatefulRedisConnection<String, String> connection, UserProperties properties) {
         super(connection);
-        this.addIfLoaded = LuaScript.load(resolver, "lua/zadd_if_loaded.lua");
         this.ttlSeconds = properties.graphCacheTtl().toSeconds();
     }
 
@@ -50,7 +59,7 @@ public class SocialGraphRedisRepository extends RedisRepository {
 
     /** Records a follow in a set that is loaded; a set that is not loaded already gets it when it is rebuilt. */
     public void addIfLoaded(UUID ownerId, GraphDirection direction, UUID otherId, Instant createdAt) {
-        addIfLoaded.execute(connection.sync(), ScriptOutputType.INTEGER, new String[]{key(ownerId, direction)},
+        connection.sync().eval(ADD_IF_LOADED, ScriptOutputType.INTEGER, new String[]{key(ownerId, direction)},
                 String.valueOf(createdAt.toEpochMilli()), otherId.toString());
     }
 
