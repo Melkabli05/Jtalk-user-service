@@ -32,6 +32,11 @@ public record UserLanguage(
         return new UserLanguage(id, userId, languageCode, languageType, level == null ? ProficiencyLevel.BEGINNER : level);
     }
 
+    /** The same language, now one the person is learning (a native language they have decided to study, or a change of level). */
+    public UserLanguage asLearning(@Nullable ProficiencyLevel level) {
+        return new UserLanguage(id, userId, languageCode, LanguageType.LEARNING, level == null ? ProficiencyLevel.BEGINNER : level);
+    }
+
     public UserLanguage asNative() {
         return new UserLanguage(id, userId, languageCode, LanguageType.NATIVE, null);
     }

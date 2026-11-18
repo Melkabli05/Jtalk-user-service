@@ -19,8 +19,10 @@ import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Singleton
@@ -81,8 +83,26 @@ class LanguageServiceImpl implements LanguageService {
     public UserPageResponse findPartners(UUID viewerId, @Nullable String nativeLang, @Nullable String learningLang, int size,
                                          @Nullable Instant afterCreatedAt, @Nullable UUID afterId) {
         User viewer = userService.getRequiredUser(viewerId);
-        String speaks = blankToNull(nativeLang) == null ? viewer.nativeLanguage() : nativeLang;
-        String learns = blankToNull(learningLang) == null ? firstLearningLanguage(viewerId) : learningLang;
+        // What the person speaks and what they are learning, all of it: a partner may match on any of them. Naming a language in the
+        // request replaces that side with just that language.
+        List<UserLanguage> mine = blankToNull(nativeLang) == null || blankToNull(learningLang) == null
+                ? languages.findByUserIdOrderByLanguageCode(viewerId) : List.of();
+        Set<String> speaks = new LinkedHashSet<>();
+        Set<String> learns = new LinkedHashSet<>();
+        if (blankToNull(nativeLang) == null) {
+            speaks.add(viewer.nativeLanguage());
+            mine.stream().filter(UserLanguage::isNative).map(UserLanguage::languageCode).forEach(speaks::add);
+        } else {
+            speaks.add(nativeLang);
+        }
+        if (blankToNull(learningLang) == null) {
+            mine.stream().filter(language -> !language.isNative()).map(UserLanguage::languageCode).forEach(learns::add);
+            if (learns.isEmpty()) {
+                throw ProblemType.NO_LEARNING_LANGUAGE.because("Add a language you are learning, or say which one to match with (learningLang)");
+            }
+        } else {
+            learns.add(learningLang);
+        }
 
         // One extra row tells whether another page exists, without a COUNT.
         int limit = size + 1;
@@ -94,15 +114,6 @@ class LanguageServiceImpl implements LanguageService {
         User last = page.isEmpty() ? null : page.getLast();
         return new UserPageResponse(mapper.toSummaries(page), hasNext,
                 hasNext ? last.createdAt() : null, hasNext ? last.id() : null);
-    }
-
-    private String firstLearningLanguage(UUID userId) {
-        return languages.findByUserIdOrderByLanguageCode(userId).stream()
-                .filter(language -> !language.isNative())
-                .map(UserLanguage::languageCode)
-                .findFirst()
-                .orElseThrow(() -> ProblemType.NO_LEARNING_LANGUAGE.because(
-                        "Add a language you are learning, or say which one to match with (learningLang)"));
     }
 
     private LanguageMatrixResponse matrix(UUID userId) {

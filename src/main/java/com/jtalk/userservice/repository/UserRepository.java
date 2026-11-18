@@ -53,23 +53,24 @@ public interface UserRepository extends CrudRepository<User, UUID> {
     List<User> searchByDisplayNamePrefix(UUID viewerId, String rangeStart, String rangeEnd, int limit);
 
     /**
-     * Language-exchange partners: users who are native in what the viewer is learning AND are learning what the viewer is native in.
-     * Newest first, with the id as tie-breaker, so a page boundary is stable.
+     * Language-exchange partners: users who are native in ANY of {@code :partnerNatives} (what the viewer is learning) AND are learning
+     * ANY of {@code :partnerLearns} (what the viewer speaks). The lists are a person's languages, a handful at most. A user is a partner
+     * once however many languages they share (EXISTS, not a join). Newest first, with the id as tie-breaker, so a page boundary is stable.
      */
     String MATCH = """
             SELECT u.* FROM user_service.users u
             WHERE u.status = 'ACTIVE' AND u.id <> :viewerId
               AND EXISTS (SELECT 1 FROM user_service.user_languages n
-                          WHERE n.user_id = u.id AND n.language_type = 'NATIVE' AND n.language_code = :partnerNative)
+                          WHERE n.user_id = u.id AND n.language_type = 'NATIVE' AND n.language_code IN (:partnerNatives))
               AND EXISTS (SELECT 1 FROM user_service.user_languages l
-                          WHERE l.user_id = u.id AND l.language_type = 'LEARNING' AND l.language_code = :partnerLearning)
+                          WHERE l.user_id = u.id AND l.language_type = 'LEARNING' AND l.language_code IN (:partnerLearns))
             """ + NOT_BLOCKED;
 
     @Query(value = MATCH + """
             ORDER BY u.created_at DESC, u.id DESC
             LIMIT :limit
             """, nativeQuery = true)
-    List<User> findMatches(UUID viewerId, String partnerNative, String partnerLearning, int limit);
+    List<User> findMatches(UUID viewerId, Collection<String> partnerNatives, Collection<String> partnerLearns, int limit);
 
     /** Keyset ("seek") pagination: the next page starts strictly after the last user of the previous one. */
     @Query(value = MATCH + """
@@ -77,5 +78,5 @@ public interface UserRepository extends CrudRepository<User, UUID> {
             ORDER BY u.created_at DESC, u.id DESC
             LIMIT :limit
             """, nativeQuery = true)
-    List<User> findMatchesAfter(UUID viewerId, String partnerNative, String partnerLearning, Instant afterCreatedAt, UUID afterId, int limit);
+    List<User> findMatchesAfter(UUID viewerId, Collection<String> partnerNatives, Collection<String> partnerLearns, Instant afterCreatedAt, UUID afterId, int limit);
 }

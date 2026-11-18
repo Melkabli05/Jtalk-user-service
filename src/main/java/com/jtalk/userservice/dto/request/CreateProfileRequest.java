@@ -3,9 +3,13 @@ package com.jtalk.userservice.dto.request;
 import com.jtalk.userservice.config.UserConstants;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import java.util.List;
 
 /**
  * The caller's own profile, created once. The user id is the token's subject, never part of the body.
@@ -13,6 +17,7 @@ import jakarta.validation.constraints.Size;
  * @param username lowercase letters, digits, {@code _} and {@code .}, 3-30 characters; unique
  * @param avatarUrl an https URL, or a path of the app itself such as {@code /avatars/avatar-03.svg}
  * @param countryCode optional
+ * @param learningLanguages the languages being learned, saved with the profile; absent means none yet
  */
 @Serdeable.Deserializable
 public record CreateProfileRequest(
@@ -21,5 +26,6 @@ public record CreateProfileRequest(
         @Nullable @Size(max = 300) String bio,
         @Nullable @Size(max = 500) @Pattern(regexp = UserConstants.AVATAR_PATTERN, message = "must be an https URL or an app path such as /avatars/a.svg") String avatarUrl,
         @Nullable @Pattern(regexp = UserConstants.COUNTRY_PATTERN, message = "must be an ISO 3166-1 alpha-2 code such as MA") String countryCode,
-        @NotBlank @Pattern(regexp = UserConstants.LANGUAGE_PATTERN, message = "must be a language tag such as ar or pt-BR") String nativeLanguage) {
+        @NotBlank @Pattern(regexp = UserConstants.LANGUAGE_PATTERN, message = "must be a language tag such as ar or pt-BR") String nativeLanguage,
+        @Nullable @Size(max = UserConstants.MAX_LANGUAGES_PER_REQUEST) List<@NotNull @Valid LearningLanguageRequest> learningLanguages) {
 }

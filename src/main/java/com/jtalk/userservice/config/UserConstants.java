@@ -25,6 +25,9 @@ public final class UserConstants {
     /** How many profiles one batch lookup may resolve: a voice room with a full stage and a few hundred listeners. */
     public static final int MAX_BATCH_IDS = 500;
     public static final int MAX_SEARCH_RESULTS = 50;
+
+    /** Languages one profile write may list; the real cap on what a person can hold is {@code user.max-languages}. */
+    public static final int MAX_LANGUAGES_PER_REQUEST = 20;
     public static final int MAX_BLOCKS_LISTED = 500;
 
     private UserConstants() {

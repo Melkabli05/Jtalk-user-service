@@ -1,11 +1,13 @@
 package com.jtalk.userservice.service.impl;
 
 import com.jtalk.userservice.config.ProblemType;
+import com.jtalk.userservice.config.UserProperties;
 import com.jtalk.userservice.domain.entity.User;
 import com.jtalk.userservice.domain.entity.UserLanguage;
 import com.jtalk.userservice.domain.event.UserProfileUpdatedEvent;
 import com.jtalk.userservice.dto.ApiMapper;
 import com.jtalk.userservice.dto.request.CreateProfileRequest;
+import com.jtalk.userservice.dto.request.LearningLanguageRequest;
 import com.jtalk.userservice.dto.request.UpdateProfileRequest;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
@@ -48,6 +50,7 @@ class UserServiceImpl implements UserService {
     private final UserLanguageRepository languages;
     private final UserRedisRepository cache;
     private final ApiMapper mapper;
+    private final UserProperties properties;
     private final ApplicationEventPublisher<UserProfileUpdatedEvent> updated;
 
     @Override
@@ -74,14 +77,17 @@ class UserServiceImpl implements UserService {
             throw e;
         }
         languages.save(UserLanguage.nativeOf(userId, saved.nativeLanguage()));
+        if (request.learningLanguages() != null) {
+            setLearning(userId, saved.nativeLanguage(), request.learningLanguages());
+        }
         updated.publishEvent(new UserProfileUpdatedEvent(saved));
         log.info("Created profile {} ({})", saved.id(), saved.username());
-        return mapper.toProfile(saved);
+        return profileOf(saved);
     }
 
     @Override
     public UserProfileResponse getProfile(UUID userId) {
-        return mapper.toProfile(getRequiredUser(userId));
+        return profileOf(getRequiredUser(userId));
     }
 
     @Override
@@ -114,15 +120,19 @@ class UserServiceImpl implements UserService {
         User current = users.findById(userId)
                 .orElseThrow(() -> ProblemType.USER_NOT_FOUND.because("You have no profile yet: create it first"));
         User changed = current.withProfile(request.displayName(), request.bio(), request.avatarUrl(), request.countryCode(), request.nativeLanguage());
-        if (changed.equals(current)) {
-            return mapper.toProfile(current);
-        }
-        User saved = users.update(changed);
+        User saved = changed.equals(current) ? current : users.update(changed);
+        // The native language first: a language being learned may be the one that is becoming native, and one that stops being the
+        // primary may be in the new list of languages being learned.
         if (!saved.nativeLanguage().equals(current.nativeLanguage())) {
             makeNative(userId, saved.nativeLanguage());
         }
-        updated.publishEvent(new UserProfileUpdatedEvent(saved));
-        return mapper.toProfile(saved);
+        if (request.learningLanguages() != null) {
+            setLearning(userId, saved.nativeLanguage(), request.learningLanguages());
+        }
+        if (saved != current) {
+            updated.publishEvent(new UserProfileUpdatedEvent(saved));
+        }
+        return profileOf(saved);
     }
 
     @Override
@@ -137,6 +147,39 @@ class UserServiceImpl implements UserService {
             users.searchByDisplayNamePrefix(viewerId, start, end, size).forEach(user -> found.putIfAbsent(user.id(), user));
         }
         return mapper.toSummaries(found.values().stream().limit(size).toList());
+    }
+
+    /**
+     * Makes {@code wanted} the whole list of languages the user is learning: languages no longer listed are dropped, new ones added, the
+     * level of the others updated. A language the user had as native becomes a learning one (they said they are learning it); the
+     * primary native language cannot be. Runs inside the caller's transaction, so a request that fails (too many languages) changes nothing.
+     */
+    private void setLearning(UUID userId, String primaryNative, List<LearningLanguageRequest> wanted) {
+        Map<String, LearningLanguageRequest> byCode = new LinkedHashMap<>();
+        wanted.forEach(language -> byCode.putIfAbsent(language.languageCode(), language));
+        if (byCode.containsKey(primaryNative)) {
+            throw ProblemType.LANGUAGE_CONFLICT.because("'" + primaryNative + "' is your native language: you cannot also learn it");
+        }
+        Map<String, UserLanguage> listed = new HashMap<>();
+        languages.findByUserIdOrderByLanguageCode(userId).forEach(row -> listed.put(row.languageCode(), row));
+        listed.values().stream()
+                .filter(row -> !row.isNative() && !byCode.containsKey(row.languageCode()))
+                .forEach(row -> languages.deleteByUserIdAndLanguageCode(userId, row.languageCode()));
+        byCode.forEach((code, language) -> {
+            UserLanguage row = listed.get(code);
+            if (row == null) {
+                languages.save(UserLanguage.learning(userId, code, language.proficiencyLevel()));
+            } else if (!row.equals(row.asLearning(language.proficiencyLevel()))) {
+                languages.update(row.asLearning(language.proficiencyLevel()));
+            }
+        });
+        if (languages.countByUserId(userId) > properties.maxLanguages()) {
+            throw ProblemType.TOO_MANY_LANGUAGES.because("You can list at most " + properties.maxLanguages() + " languages");
+        }
+    }
+
+    private UserProfileResponse profileOf(User user) {
+        return mapper.toProfile(user, languages.findByUserIdOrderByLanguageCode(user.id()));
     }
 
     /** The primary native language always has a NATIVE row: a language the user was learning becomes native, and a new one is added. */

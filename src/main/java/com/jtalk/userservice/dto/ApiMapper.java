@@ -20,8 +20,12 @@ import java.util.UUID;
 @Singleton
 public interface ApiMapper {
 
-    @Mapper
-    UserProfileResponse toProfile(User user);
+    /** A profile with its languages. Built by hand because the languages come from another table, not from the user. */
+    default UserProfileResponse toProfile(User user, List<UserLanguage> languages) {
+        LanguageMatrixResponse matrix = toMatrix(user.id(), languages);
+        return new UserProfileResponse(user.id(), user.username(), user.displayName(), user.bio(), user.avatarUrl(), user.countryCode(),
+                user.nativeLanguage(), matrix.nativeLanguages(), matrix.learningLanguages(), user.createdAt());
+    }
 
     @Mapper
     UserSummaryResponse toSummary(User user);
