@@ -14,3 +14,27 @@ build/
 # Tooling
 .idea/
 .DS_Store
+
+# Java
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+.vscode/
+.sts4-cache/
+.apt_generated/
+*.swp
+
+# Local configuration and secrets: these stay on the machine (use the environment, see application.yml)
+.env
+.env.*
+!.env.example
+application-local*.yml
+*.pem
+*.key
+*.p12
+*.jks
+.mcp.json
+
+# Local Docker overrides
+docker-compose.override.yml

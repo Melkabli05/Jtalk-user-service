@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+
 /**
  * Brings Redis in line with what a transaction just committed. These run after the commit, so a write that rolls back never touches
  * Redis, and no Redis call holds a database connection. A Redis failure here is logged, never thrown: the change is already stored in the

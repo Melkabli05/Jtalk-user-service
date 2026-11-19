@@ -7,7 +7,7 @@ Java 25 · Micronaut 5 · PostgreSQL · Redis.
 
 ## Structure
 
-```
+```text
 src/main/java/com/jtalk/userservice/
 ├── config/        UserConstants, UserProperties, ProblemType (RFC 9457 problems), UserIdClaimValidator
 ├── controller/    UserProfileController, SocialGraphController (+ @CurrentUser)
@@ -54,7 +54,7 @@ rows, 220k blocks and 1.6M follows (`perf/` has the seed and the scripts), and t
 **Database** (page of 20, one viewer, warm cache):
 
 | Query | Before | After | What changed |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Matchmaking, first page (13.7k matching users) | 148 ms | 4 ms | `idx_users_active_newest`: walk active users newest-first and probe their two language rows, stopping at the page. Before, the planner found **every** match, joined and sorted them all, and kept 21, so a page cost the number of matches |
 | Matchmaking, deep page | 19 ms | 1.8 ms | same index; the keyset cursor `(created_at, id) < (?, ?)` is now a range on it |
 | Matchmaking, rare pair (4.5k matches) | 25-34 ms | 22 ms | no regression: the planner still prefers the selective side |
@@ -70,7 +70,7 @@ custom plans without driver tricks.
 **Redis round trips** (what a request waits on over the network; counted by `PerformanceBudgetTest`, which fails if one regresses):
 
 | Request | Before | After |
-|---|---|---|
+| --- | --- | --- |
 | A profile's counts and follow flags | 7, one after another | 1 |
 | A page of followers | 5 | 2 (the page and its size, then the profiles of the page) |
 | Following someone already followed | 4 + a SQL query | 1 |
@@ -91,7 +91,7 @@ communication service uses). See [Authentication](#authentication-auth0).
 Errors are RFC 9457 `application/problem+json` with a stable `type` such as `urn:jtalk:user:problem:username-taken`.
 
 | Method & path | Purpose |
-|---|---|
+| --- | --- |
 | `POST /me` / `GET /me` / `PATCH /me` | Create your profile (once; the country is optional) / read / partial update (`""` clears `bio` and `avatarUrl`; the username is fixed). `avatarUrl` is an `https` URL or a path of the front end such as `/avatars/avatar-03.svg`. Both writes take `learningLanguages: [{languageCode, proficiencyLevel}]` (see below), and every profile response lists `nativeLanguages` and `learningLanguages` |
 | `DELETE /me` | Deletes your account for good: the profile, your languages, every follow to or from you and every block by or against you go with it (the database cascades), other people's follower and following numbers are corrected, and the cached copies are dropped and `USER_DELETED` is announced on `user-events`. Idempotent, `204`; you can sign up again. It does not delete the Auth0 identity (that needs the Management API) |
 | `GET /{id}` | Any user's profile, with their languages (`/batch` summaries stay light: no languages, no extra query) |
@@ -172,16 +172,16 @@ One-time setup in the Auth0 dashboard:
 3. **Actions > Library > Build Custom > Login / Post Login**, add the Action below to the Login flow. It gives each user one stable UUID and puts it
    in the access token:
 
-```js
-exports.onExecutePostLogin = async (event, api) => {
-  let id = event.user.app_metadata.jtalk_id;
-  if (!id) {
-    id = require('crypto').randomUUID();
-    api.user.setAppMetadata('jtalk_id', id);
-  }
-  api.accessToken.setCustomClaim('https://jtalk.app/user_id', id);
-};
-```
+   ```js
+   exports.onExecutePostLogin = async (event, api) => {
+     let id = event.user.app_metadata.jtalk_id;
+     if (!id) {
+       id = require('crypto').randomUUID();
+       api.user.setAppMetadata('jtalk_id', id);
+     }
+     api.accessToken.setCustomClaim('https://jtalk.app/user_id', id);
+   };
+   ```
 
 4. Set `AUTH0_DOMAIN` and `AUTH0_AUDIENCE` (Render asks for both). The live communication service needs the same two settings and the same claim to
    accept the same tokens.

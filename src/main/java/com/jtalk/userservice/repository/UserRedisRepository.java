@@ -144,8 +144,9 @@ public class UserRedisRepository extends RedisRepository {
 
     /** Tells every subscriber that this user's profile changed. */
     public void announceUpdated(User user) {
+        String avatarField = user.avatarUrl() != null ? String.format(",\"avatar\":\"%s\"", user.avatarUrl()) : "";
         connection.sync().publish(CHANNEL,
-                "{\"type\":\"USER_PROFILE_UPDATED\",\"userId\":\"%s\",\"version\":%d}".formatted(user.id(), version(user)));
+                "{\"type\":\"USER_PROFILE_UPDATED\",\"userId\":\"%s\",\"version\":%d%s}".formatted(user.id(), version(user), avatarField));
     }
 
     /** Drops the cached profile of a user whose account was deleted. */
