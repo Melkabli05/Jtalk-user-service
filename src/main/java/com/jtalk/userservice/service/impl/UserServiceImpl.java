@@ -13,6 +13,7 @@ import com.jtalk.userservice.dto.request.UpdateProfileRequest;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
 import com.jtalk.userservice.repository.FollowRepository;
+import com.jtalk.userservice.repository.UserAvatarRepository;
 import com.jtalk.userservice.repository.UserLanguageRepository;
 import com.jtalk.userservice.repository.UserRedisRepository;
 import com.jtalk.userservice.repository.UserRepository;
@@ -58,6 +59,8 @@ class UserServiceImpl implements UserService {
     private final ApplicationEventPublisher<UserProfileUpdatedEvent> updated;
     private final ApplicationEventPublisher<UserDeletedEvent> deleted;
     private final FollowRepository follows;
+    private final UserAvatarRepository avatars;
+    private final UsernamePolicy usernamePolicy;
 
     @Override
     @Transactional
@@ -66,7 +69,7 @@ class UserServiceImpl implements UserService {
             throw ProblemType.PROFILE_ALREADY_EXISTS.because("You already have a profile");
         }
         if (users.existsByUsername(request.username())) {
-            throw usernameTaken(request.username());
+            throw UsernamePolicy.taken(request.username());
         }
         User saved;
         try {
@@ -75,7 +78,7 @@ class UserServiceImpl implements UserService {
         } catch (DataAccessException e) {
             // Two requests can pass the checks above together; the database constraint decides which one wins.
             if (Violations.isUnique(e, "users_username_key")) {
-                throw usernameTaken(request.username());
+                throw UsernamePolicy.taken(request.username());
             }
             if (Violations.isUnique(e, "users_pkey")) {
                 throw ProblemType.PROFILE_ALREADY_EXISTS.because("You already have a profile");
@@ -125,8 +128,17 @@ class UserServiceImpl implements UserService {
         // Always from the database, never the cache: the write must be based on what is really stored.
         User current = users.findById(userId)
                 .orElseThrow(() -> ProblemType.USER_NOT_FOUND.because("You have no profile yet: create it first"));
-        User changed = current.withProfile(request.displayName(), request.bio(), request.avatarUrl(), request.countryCode(), request.nativeLanguage());
-        User saved = changed.equals(current) ? current : users.update(changed);
+        String newUsername = changedUsername(request, current);
+        if (newUsername != null) {
+            usernamePolicy.requireAllowed(userId, newUsername);
+        }
+        User changed = current.withProfile(newUsername, request.displayName(), request.bio(), request.avatarUrl(), request.countryCode(),
+                request.nativeLanguage());
+        User saved = changed.equals(current) ? current : saveChanged(changed, newUsername);
+        if (newUsername != null) {
+            users.markUsernameChanged(userId);
+        }
+        dropReplacedUpload(userId, request.avatarUrl());
         // The native language first: a language being learned may be the one that is becoming native, and one that stops being the
         // primary may be in the new list of languages being learned.
         if (!saved.nativeLanguage().equals(current.nativeLanguage())) {
@@ -239,7 +251,27 @@ class UserServiceImpl implements UserService {
         }
     }
 
-    private static RuntimeException usernameTaken(String username) {
-        return ProblemType.USERNAME_TAKEN.because("The username '" + username + "' is taken");
+    /** The username the request asks for, or null when it asks for none or for the one the user has. */
+    private static String changedUsername(UpdateProfileRequest request, User current) {
+        return request.username() == null || request.username().equals(current.username()) ? null : request.username();
+    }
+
+    /** Choosing a picture of the app's (or clearing it) leaves an uploaded one with nothing pointing at it. */
+    private void dropReplacedUpload(UUID userId, String newAvatarUrl) {
+        if (newAvatarUrl != null && !AvatarImages.isUploaded(userId, newAvatarUrl)) {
+            avatars.deleteById(userId);
+        }
+    }
+
+    private User saveChanged(User changed, String newUsername) {
+        try {
+            return users.update(changed);
+        } catch (DataAccessException e) {
+            // Two people can pick the same handle together; the database constraint decides who gets it.
+            if (newUsername != null && Violations.isUnique(e, "users_username_key")) {
+                throw UsernamePolicy.taken(newUsername);
+            }
+            throw e;
+        }
     }
 }

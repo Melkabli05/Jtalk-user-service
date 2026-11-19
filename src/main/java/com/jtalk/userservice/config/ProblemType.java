@@ -18,6 +18,8 @@ public enum ProblemType {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found"),
     PROFILE_ALREADY_EXISTS(HttpStatus.CONFLICT, "Profile already exists"),
     USERNAME_TAKEN(HttpStatus.CONFLICT, "Username is taken"),
+    USERNAME_CHANGE_TOO_SOON(HttpStatus.UNPROCESSABLE_ENTITY, "Username changed too recently"),
+    AVATAR_INVALID(HttpStatus.UNPROCESSABLE_ENTITY, "Picture not accepted"),
     CANNOT_FOLLOW_SELF(HttpStatus.UNPROCESSABLE_ENTITY, "You cannot follow yourself"),
     CANNOT_BLOCK_SELF(HttpStatus.UNPROCESSABLE_ENTITY, "You cannot block yourself"),
     FOLLOW_NOT_ALLOWED(HttpStatus.FORBIDDEN, "You cannot follow this user"),

@@ -37,18 +37,23 @@ public record User(
     }
 
     /**
-     * Applies a partial update. A null argument keeps the current value; for {@code bio} and {@code avatarUrl}, which are optional,
+     * Applies a partial update. A null argument keeps the current value (a new username is checked and rate-limited by the service, not here); for {@code bio} and {@code avatarUrl}, which are optional,
      * an empty string clears it.
      */
-    public User withProfile(@Nullable String newDisplayName, @Nullable String newBio, @Nullable String newAvatarUrl,
+    public User withProfile(@Nullable String newUsername, @Nullable String newDisplayName, @Nullable String newBio, @Nullable String newAvatarUrl,
                             @Nullable String newCountryCode, @Nullable String newNativeLanguage) {
-        return new User(id, username,
+        return new User(id, newUsername == null ? username : newUsername,
                 newDisplayName == null ? displayName : newDisplayName.strip(),
                 newBio == null ? bio : blankToNull(newBio),
                 newAvatarUrl == null ? avatarUrl : blankToNull(newAvatarUrl),
                 newCountryCode == null ? countryCode : newCountryCode,
                 newNativeLanguage == null ? nativeLanguage : newNativeLanguage,
                 status, createdAt, updatedAt);
+    }
+
+    /** The same user with this picture, which may be an uploaded one's address. */
+    public User withAvatar(String newAvatarUrl) {
+        return withProfile(null, null, null, newAvatarUrl, null, null);
     }
 
     public boolean isActive() {

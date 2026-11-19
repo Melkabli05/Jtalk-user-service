@@ -9,12 +9,20 @@ import io.micronaut.data.repository.CrudRepository;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @JdbcRepository(dialect = Dialect.POSTGRES)
 public interface UserRepository extends CrudRepository<User, UUID> {
 
     boolean existsByUsername(String username);
+
+    /** When this user last changed their username; empty if they never did. */
+    @Query("SELECT username_changed_at FROM user_service.users WHERE id = :userId")
+    Optional<Instant> findUsernameChangedAt(UUID userId);
+
+    @Query("UPDATE user_service.users SET username_changed_at = NOW() WHERE id = :userId")
+    void markUsernameChanged(UUID userId);
 
     List<User> findByIdIn(Collection<UUID> ids);
 
