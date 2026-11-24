@@ -1,6 +1,7 @@
 package com.jtalk.userservice.repository;
 
 import com.jtalk.userservice.domain.entity.User;
+import com.jtalk.userservice.domain.model.DiscoveredUser;
 import io.micronaut.data.annotation.Query;
 import io.micronaut.data.jdbc.annotation.JdbcRepository;
 import io.micronaut.data.model.query.builder.sql.Dialect;
@@ -35,6 +36,12 @@ public interface UserRepository extends CrudRepository<User, UUID> {
                                OR (b.blocker_id = u.id AND b.blocked_id = :viewerId))
             """;
 
+    String DISCOVERY_COLUMNS = """
+            SELECT u.id, u.username, u.display_name, u.avatar_url, u.country_code, u.native_language, u.created_at,
+                   EXISTS (SELECT 1 FROM user_service.follows f
+                           WHERE f.follower_id = :viewerId AND f.following_id = u.id) AS followed_by_me
+            """;
+
     /** Both prefix ranges use the C-collated indexes. Display names fill the slots left after matching handles. */
     @Query(value = """
             WITH handles AS MATERIALIZED (
@@ -55,20 +62,19 @@ public interface UserRepository extends CrudRepository<User, UUID> {
                 ORDER BY match_name, u.id
                 LIMIT (:limit - (SELECT count(*) FROM handles))
             )
-            SELECT * FROM handles
-            UNION ALL
-            SELECT * FROM names
-            ORDER BY match_rank, match_name, id
+            """ + DISCOVERY_COLUMNS + """
+            FROM (SELECT * FROM handles UNION ALL SELECT * FROM names) u
+            ORDER BY u.match_rank, u.match_name, u.id
             """, nativeQuery = true)
-    List<User> searchByPrefix(UUID viewerId, String rangeStart, String rangeEnd, int limit);
+    List<DiscoveredUser> searchByPrefix(UUID viewerId, String rangeStart, String rangeEnd, int limit);
 
     /**
      * Language-exchange partners: users who are native in ANY of {@code :partnerNatives} (what the viewer is learning) AND are learning
      * ANY of {@code :partnerLearns} (what the viewer speaks). The lists are a person's languages, a handful at most. A user is a partner
      * once however many languages they share (EXISTS, not a join). Newest first, with the id as tie-breaker, so a page boundary is stable.
      */
-    String MATCH = """
-            SELECT u.* FROM user_service.users u
+    String MATCH = DISCOVERY_COLUMNS + """
+            FROM user_service.users u
             WHERE u.status = 'ACTIVE' AND u.id <> :viewerId
               AND EXISTS (SELECT 1 FROM user_service.user_languages n
                           WHERE n.user_id = u.id AND n.language_type = 'NATIVE' AND n.language_code IN (:partnerNatives))
@@ -80,7 +86,7 @@ public interface UserRepository extends CrudRepository<User, UUID> {
             ORDER BY u.created_at DESC, u.id DESC
             LIMIT :limit
             """, nativeQuery = true)
-    List<User> findMatches(UUID viewerId, Collection<String> partnerNatives, Collection<String> partnerLearns, int limit);
+    List<DiscoveredUser> findMatches(UUID viewerId, Collection<String> partnerNatives, Collection<String> partnerLearns, int limit);
 
     /** Keyset ("seek") pagination: the next page starts strictly after the last user of the previous one. */
     @Query(value = MATCH + """
@@ -88,5 +94,5 @@ public interface UserRepository extends CrudRepository<User, UUID> {
             ORDER BY u.created_at DESC, u.id DESC
             LIMIT :limit
             """, nativeQuery = true)
-    List<User> findMatchesAfter(UUID viewerId, Collection<String> partnerNatives, Collection<String> partnerLearns, Instant afterCreatedAt, UUID afterId, int limit);
+    List<DiscoveredUser> findMatchesAfter(UUID viewerId, Collection<String> partnerNatives, Collection<String> partnerLearns, Instant afterCreatedAt, UUID afterId, int limit);
 }

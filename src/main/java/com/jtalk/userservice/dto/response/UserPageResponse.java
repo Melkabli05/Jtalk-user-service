@@ -14,7 +14,7 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.ALWAYS)
 @Serdeable.Serializable
 public record UserPageResponse(
-        List<UserSummaryResponse> content,
+        List<DiscoveredUserResponse> content,
         boolean hasNext,
         Instant nextAfterCreatedAt,
         UUID nextAfterId) {

@@ -3,6 +3,7 @@ package com.jtalk.userservice.service.impl;
 import com.jtalk.userservice.config.ProblemType;
 import com.jtalk.userservice.config.UserProperties;
 import com.jtalk.userservice.domain.entity.User;
+import com.jtalk.userservice.domain.model.DiscoveredUser;
 import com.jtalk.userservice.domain.entity.UserLanguage;
 import com.jtalk.userservice.domain.enums.LanguageType;
 import com.jtalk.userservice.dto.ApiMapper;
@@ -106,13 +107,13 @@ class LanguageServiceImpl implements LanguageService {
 
         // One extra row tells whether another page exists, without a COUNT.
         int limit = size + 1;
-        List<User> rows = afterCreatedAt == null || afterId == null
+        List<DiscoveredUser> rows = afterCreatedAt == null || afterId == null
                 ? users.findMatches(viewerId, learns, speaks, limit)
                 : users.findMatchesAfter(viewerId, learns, speaks, afterCreatedAt, afterId, limit);
         boolean hasNext = rows.size() > size;
-        List<User> page = hasNext ? rows.subList(0, size) : rows;
-        User last = page.isEmpty() ? null : page.getLast();
-        return new UserPageResponse(mapper.toSummaries(page), hasNext,
+        List<DiscoveredUser> page = hasNext ? rows.subList(0, size) : rows;
+        DiscoveredUser last = page.isEmpty() ? null : page.getLast();
+        return new UserPageResponse(mapper.toDiscoveries(page), hasNext,
                 hasNext ? last.createdAt() : null, hasNext ? last.id() : null);
     }
 

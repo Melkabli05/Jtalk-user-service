@@ -123,10 +123,14 @@ class LanguageApiTest extends ApiTestBase {
         learn("frank", "en", null);
         block("alice", "erin");
         block("frank", "alice");
+        follow("alice", "bob");
+        follow("gina", "alice");
 
         Map<String, Object> page = get("/api/v1/users/matchmaking", "alice");
         assertEquals(List.of(id("gina").toString(), id("bob").toString()), contentIds(page),
                 "bob and gina; newest first; not carol (wrong language), dave (same side), erin or frank (blocked), nor alice herself");
+        assertEquals(List.of(false, true), ((List<?>) page.get("content")).stream()
+                .map(user -> ((Map<?, ?>) user).get("followedByMe")).toList());
         assertFalse((Boolean) page.get("hasNext"));
         assertNull(page.get("nextAfterId"));
 

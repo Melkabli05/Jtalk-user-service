@@ -2,6 +2,8 @@ package com.jtalk.userservice.dto;
 
 import com.jtalk.userservice.domain.entity.User;
 import com.jtalk.userservice.domain.entity.UserLanguage;
+import com.jtalk.userservice.domain.model.DiscoveredUser;
+import com.jtalk.userservice.dto.response.DiscoveredUserResponse;
 import com.jtalk.userservice.dto.response.LanguageEntryResponse;
 import com.jtalk.userservice.dto.response.LanguageMatrixResponse;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
@@ -29,6 +31,13 @@ public interface ApiMapper {
 
     @Mapper
     UserSummaryResponse toSummary(User user);
+
+    @Mapper
+    DiscoveredUserResponse toDiscovery(DiscoveredUser user);
+
+    default List<DiscoveredUserResponse> toDiscoveries(List<DiscoveredUser> users) {
+        return users.stream().map(this::toDiscovery).toList();
+    }
 
     @Mapper
     LanguageEntryResponse toEntry(UserLanguage language);

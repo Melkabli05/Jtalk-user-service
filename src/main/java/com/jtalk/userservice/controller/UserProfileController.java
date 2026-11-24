@@ -8,6 +8,7 @@ import com.jtalk.userservice.dto.request.UpdateProfileRequest;
 import com.jtalk.userservice.dto.response.LanguageMatrixResponse;
 import com.jtalk.userservice.dto.response.UserPageResponse;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
+import com.jtalk.userservice.dto.response.DiscoveredUserResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
 import com.jtalk.userservice.service.LanguageService;
 import com.jtalk.userservice.service.UserService;
@@ -86,7 +87,7 @@ class UserProfileController {
     }
 
     @Get("/search")
-    List<UserSummaryResponse> search(@CurrentUser UUID userId,
+    List<DiscoveredUserResponse> search(@CurrentUser UUID userId,
                                      @QueryValue @NotBlank @Size(max = 50) String q,
                                      @QueryValue(defaultValue = "20") @Min(1) @Max(UserConstants.MAX_SEARCH_RESULTS) int size) {
         return users.search(userId, q, size);

@@ -11,6 +11,7 @@ import com.jtalk.userservice.dto.request.CreateProfileRequest;
 import com.jtalk.userservice.dto.request.LearningLanguageRequest;
 import com.jtalk.userservice.dto.request.UpdateProfileRequest;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
+import com.jtalk.userservice.dto.response.DiscoveredUserResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
 import com.jtalk.userservice.repository.FollowRepository;
 import com.jtalk.userservice.repository.UserAvatarRepository;
@@ -167,9 +168,9 @@ class UserServiceImpl implements UserService {
     }
 
     @Override
-    public List<UserSummaryResponse> search(UUID viewerId, String query, int size) {
+    public List<DiscoveredUserResponse> search(UUID viewerId, String query, int size) {
         String start = query.strip().toLowerCase(Locale.ROOT);
-        return mapper.toSummaries(users.searchByPrefix(viewerId, start, start + PAST_ANY_TEXT, size));
+        return mapper.toDiscoveries(users.searchByPrefix(viewerId, start, start + PAST_ANY_TEXT, size));
     }
 
     /**

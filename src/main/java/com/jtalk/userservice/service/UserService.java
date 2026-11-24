@@ -5,6 +5,7 @@ import com.jtalk.userservice.domain.entity.User;
 import com.jtalk.userservice.dto.request.CreateProfileRequest;
 import com.jtalk.userservice.dto.request.UpdateProfileRequest;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
+import com.jtalk.userservice.dto.response.DiscoveredUserResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
 import io.micronaut.core.annotation.NonNull;
 import io.micronaut.validation.Validated;
@@ -48,6 +49,6 @@ public interface UserService {
     void deleteAccount(@NonNull UUID userId);
 
     /** Active users whose username or display name starts with {@code query}, never ones who blocked the caller or whom the caller blocked. */
-    List<UserSummaryResponse> search(@NonNull UUID viewerId, @NotBlank String query,
+    List<DiscoveredUserResponse> search(@NonNull UUID viewerId, @NotBlank String query,
                                      @Min(1) @Max(UserConstants.MAX_SEARCH_RESULTS) int size);
 }

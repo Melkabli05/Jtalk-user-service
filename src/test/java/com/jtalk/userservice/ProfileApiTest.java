@@ -209,8 +209,11 @@ class ProfileApiTest extends ApiTestBase {
         register("viewer");
         post("/api/v1/users/me", "zed", Map.of("username", "zed", "displayName", "Samira Z", "countryCode", "MA", "nativeLanguage", "ar"));
 
-        List<String> found = getList("/api/v1/users/search?q=SA", "viewer").stream().map(u -> (String) u.get("username")).toList();
-        assertEquals(List.of("sam", "sarah", "zed"), found, "case-insensitive, by username (sam, sarah) or display name (Samira), sorted by username");
+        follow("viewer", "sarah");
+        follow("sam", "viewer");
+        var found = getList("/api/v1/users/search?q=SA", "viewer");
+        assertEquals(List.of("sam", "sarah", "zed"), found.stream().map(user -> user.get("username")).toList());
+        assertEquals(List.of(false, true, false), found.stream().map(user -> user.get("followedByMe")).toList());
 
         assertEquals(List.of("sarah"), getList("/api/v1/users/search?q=sara", "viewer").stream().map(u -> (String) u.get("username")).toList());
         assertEquals(List.of(), getList("/api/v1/users/search?q=%25", "viewer"), "LIKE wildcards are plain characters");
