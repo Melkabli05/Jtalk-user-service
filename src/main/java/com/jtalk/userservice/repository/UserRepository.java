@@ -17,6 +17,8 @@ public interface UserRepository extends CrudRepository<User, UUID> {
 
     boolean existsByUsername(String username);
 
+    Optional<User> findByIdForUpdate(UUID id);
+
     /** When this user last changed their username; empty if they never did. */
     @Query("SELECT username_changed_at FROM user_service.users WHERE id = :userId")
     Optional<Instant> findUsernameChangedAt(UUID userId);
@@ -33,32 +35,32 @@ public interface UserRepository extends CrudRepository<User, UUID> {
                                OR (b.blocker_id = u.id AND b.blocked_id = :viewerId))
             """;
 
-    /**
-     * Typeahead by handle: active users whose username lies in {@code [rangeStart, rangeEnd)}, which is "starts with the prefix". It is a
-     * range on a C-collated index (V3) and not a LIKE: a range can be served by any prepared-statement plan, while LIKE with a bind
-     * parameter falls back to scanning the whole table once the plan turns generic. Ordered by the same expression, so the index returns
-     * the first {@code limit} rows and stops.
-     */
+    /** Both prefix ranges use the C-collated indexes. Display names fill the slots left after matching handles. */
     @Query(value = """
-            SELECT u.* FROM user_service.users u
-            WHERE u.status = 'ACTIVE' AND u.id <> :viewerId
-              AND u.username COLLATE "C" >= :rangeStart AND u.username COLLATE "C" < :rangeEnd
-            """ + NOT_BLOCKED + """
-            ORDER BY u.username COLLATE "C"
-            LIMIT :limit
+            WITH handles AS MATERIALIZED (
+                SELECT u.*, 0 AS match_rank, u.username COLLATE "C" AS match_name
+                FROM user_service.users u
+                WHERE u.status = 'ACTIVE' AND u.id <> :viewerId
+                  AND u.username COLLATE "C" >= :rangeStart AND u.username COLLATE "C" < :rangeEnd
+                """ + NOT_BLOCKED + """
+                ORDER BY match_name
+                LIMIT :limit
+            ), names AS (
+                SELECT u.*, 1 AS match_rank, lower(u.display_name) COLLATE "C" AS match_name
+                FROM user_service.users u
+                WHERE u.status = 'ACTIVE' AND u.id <> :viewerId
+                  AND lower(u.display_name) COLLATE "C" >= :rangeStart AND lower(u.display_name) COLLATE "C" < :rangeEnd
+                  AND u.id NOT IN (SELECT id FROM handles)
+                """ + NOT_BLOCKED + """
+                ORDER BY match_name, u.id
+                LIMIT (:limit - (SELECT count(*) FROM handles))
+            )
+            SELECT * FROM handles
+            UNION ALL
+            SELECT * FROM names
+            ORDER BY match_rank, match_name, id
             """, nativeQuery = true)
-    List<User> searchByUsernamePrefix(UUID viewerId, String rangeStart, String rangeEnd, int limit);
-
-    /** The same by display name (compared lowercased), for a person whose handle does not start with what was typed. */
-    @Query(value = """
-            SELECT u.* FROM user_service.users u
-            WHERE u.status = 'ACTIVE' AND u.id <> :viewerId
-              AND lower(u.display_name) COLLATE "C" >= :rangeStart AND lower(u.display_name) COLLATE "C" < :rangeEnd
-            """ + NOT_BLOCKED + """
-            ORDER BY lower(u.display_name) COLLATE "C", u.id
-            LIMIT :limit
-            """, nativeQuery = true)
-    List<User> searchByDisplayNamePrefix(UUID viewerId, String rangeStart, String rangeEnd, int limit);
+    List<User> searchByPrefix(UUID viewerId, String rangeStart, String rangeEnd, int limit);
 
     /**
      * Language-exchange partners: users who are native in ANY of {@code :partnerNatives} (what the viewer is learning) AND are learning

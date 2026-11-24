@@ -4,10 +4,15 @@ import com.jtalk.userservice.support.ApiTestBase;
 import io.micronaut.context.annotation.Property;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -55,6 +60,34 @@ class LanguageApiTest extends ApiTestBase {
         learn("alice", "fr", null);   // en + ar + fr = the 3 this test allows
         assertProblem(HttpStatus.UNPROCESSABLE_ENTITY, "too-many-languages", () -> learn("alice", "de", null));
         learn("alice", "fr", "FLUENT");   // changing one already listed is not adding
+    }
+
+    @Test
+    void concurrentAddsCannotExceedTheLanguageLimit() throws Exception {
+        register("alice", "en");
+        learn("alice", "fr", null);
+        List<String> languages = List.of("ar", "es", "de", "pt", "it", "ja", "ko", "zh");
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<HttpStatus>> requests = languages.stream().map(language -> executor.submit(() -> {
+                start.await();
+                try {
+                    learn("alice", language, null);
+                    return HttpStatus.OK;
+                } catch (HttpClientResponseException rejected) {
+                    return rejected.getStatus();
+                }
+            })).toList();
+            start.countDown();
+
+            List<HttpStatus> statuses = new java.util.ArrayList<>();
+            for (var request : requests) {
+                statuses.add(request.get(10, TimeUnit.SECONDS));
+            }
+            assertEquals(1, statuses.stream().filter(HttpStatus.OK::equals).count());
+            assertEquals(languages.size() - 1, statuses.stream().filter(HttpStatus.UNPROCESSABLE_ENTITY::equals).count());
+        }
+        assertEquals(2, ((List<?>) get("/api/v1/users/me/languages", "alice").get("learningLanguages")).size());
     }
 
     @Test

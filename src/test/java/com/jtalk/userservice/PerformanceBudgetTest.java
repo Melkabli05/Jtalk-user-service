@@ -1,15 +1,21 @@
 package com.jtalk.userservice;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 import com.jtalk.userservice.support.ApiTestBase;
 import com.jtalk.userservice.support.RedisCommandRecorder;
 import com.jtalk.userservice.support.RedisCommandRecorder.Trace;
 import io.micronaut.http.HttpRequest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -123,5 +129,36 @@ class PerformanceBudgetTest extends ApiTestBase {
         assertEquals(2, trace.count("EVAL"), "both sets are updated");
         assertEquals(2, trace.count("HGETALL"), "both profiles in one read");
         assertEquals(List.of("ZSCORE", "ZCARD"), trace.commands().subList(0, 2).stream().sorted(java.util.Comparator.reverseOrder()).toList());
+    }
+
+    @Test
+    void typeaheadUsesOneSqlStatementEvenWhenItNeedsDisplayNameMatches() {
+        register("viewer");
+        register("sam");
+        register("zed");
+        patch("/api/v1/users/me", "zed", Map.of("displayName", "Sarah"));
+
+        var queries = (Logger) LoggerFactory.getLogger("io.micronaut.data.query");
+        Level previousLevel = queries.getLevel();
+        var statements = new AtomicInteger();
+        var counter = new AppenderBase<ILoggingEvent>() {
+            @Override
+            protected void append(ILoggingEvent event) {
+                statements.incrementAndGet();
+            }
+        };
+        counter.setContext(queries.getLoggerContext());
+        counter.start();
+        queries.addAppender(counter);
+        queries.setLevel(Level.DEBUG);
+        try {
+            var matches = getList("/api/v1/users/search?q=sa&size=3", "viewer");
+            assertEquals(List.of("sam", "zed"), matches.stream().map(user -> user.get("username")).toList());
+            assertEquals(1, statements.get());
+        } finally {
+            queries.setLevel(previousLevel);
+            queries.detachAppender(counter);
+            counter.stop();
+        }
     }
 }

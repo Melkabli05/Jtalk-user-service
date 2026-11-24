@@ -126,7 +126,7 @@ class UserServiceImpl implements UserService {
     @Transactional
     public UserProfileResponse updateProfile(UUID userId, UpdateProfileRequest request) {
         // Always from the database, never the cache: the write must be based on what is really stored.
-        User current = users.findById(userId)
+        User current = users.findByIdForUpdate(userId)
                 .orElseThrow(() -> ProblemType.USER_NOT_FOUND.because("You have no profile yet: create it first"));
         String newUsername = changedUsername(request, current);
         if (newUsername != null) {
@@ -169,15 +169,7 @@ class UserServiceImpl implements UserService {
     @Override
     public List<UserSummaryResponse> search(UUID viewerId, String query, int size) {
         String start = query.strip().toLowerCase(Locale.ROOT);
-        String end = start + PAST_ANY_TEXT;
-        // Handles first: someone typing "sar" means the handle sara_k before a Sara with another handle. Each query is an index range
-        // that stops after one page, so the cost is the page, not the number of matches.
-        Map<UUID, User> found = new LinkedHashMap<>();
-        users.searchByUsernamePrefix(viewerId, start, end, size).forEach(user -> found.put(user.id(), user));
-        if (found.size() < size) {
-            users.searchByDisplayNamePrefix(viewerId, start, end, size).forEach(user -> found.putIfAbsent(user.id(), user));
-        }
-        return mapper.toSummaries(found.values().stream().limit(size).toList());
+        return mapper.toSummaries(users.searchByPrefix(viewerId, start, start + PAST_ANY_TEXT, size));
     }
 
     /**
@@ -193,6 +185,13 @@ class UserServiceImpl implements UserService {
         }
         Map<String, UserLanguage> listed = new HashMap<>();
         languages.findByUserIdOrderByLanguageCode(userId).forEach(row -> listed.put(row.languageCode(), row));
+        long retainedNativeCount = listed.values().stream()
+                .filter(UserLanguage::isNative)
+                .filter(row -> !byCode.containsKey(row.languageCode()))
+                .count();
+        if (retainedNativeCount + byCode.size() > properties.maxLanguages()) {
+            throw ProblemType.TOO_MANY_LANGUAGES.because("You can list at most " + properties.maxLanguages() + " languages");
+        }
         listed.values().stream()
                 .filter(row -> !row.isNative() && !byCode.containsKey(row.languageCode()))
                 .forEach(row -> languages.deleteByUserIdAndLanguageCode(userId, row.languageCode()));
@@ -204,9 +203,6 @@ class UserServiceImpl implements UserService {
                 languages.update(row.asLearning(language.proficiencyLevel()));
             }
         });
-        if (languages.countByUserId(userId) > properties.maxLanguages()) {
-            throw ProblemType.TOO_MANY_LANGUAGES.because("You can list at most " + properties.maxLanguages() + " languages");
-        }
     }
 
     private UserProfileResponse profileOf(User user) {

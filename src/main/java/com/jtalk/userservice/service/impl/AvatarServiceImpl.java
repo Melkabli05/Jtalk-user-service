@@ -34,8 +34,7 @@ class AvatarServiceImpl implements AvatarService {
     @Override
     @Transactional
     public UserProfileResponse upload(UUID userId, String contentType, byte[] image) {
-        // From the database, never the cache: the write must be based on what is really stored.
-        var current = users.findById(userId)
+        var current = users.findByIdForUpdate(userId)
                 .orElseThrow(() -> ProblemType.USER_NOT_FOUND.because("You have no profile yet: create it first"));
         AvatarImages.require(contentType, image, properties.maxAvatarBytes());
         long version = System.currentTimeMillis();

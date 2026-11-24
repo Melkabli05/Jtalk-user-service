@@ -44,7 +44,7 @@ class LanguageServiceImpl implements LanguageService {
     @Override
     @Transactional
     public LanguageMatrixResponse addLanguage(UUID userId, AddLanguageRequest request) {
-        userService.getRequiredUser(userId);
+        lockProfile(userId);
         Optional<UserLanguage> existing = languages.findByUserIdAndLanguageCode(userId, request.languageCode());
         if (existing.isPresent()) {
             UserLanguage row = existing.get();
@@ -69,7 +69,7 @@ class LanguageServiceImpl implements LanguageService {
     @Override
     @Transactional
     public LanguageMatrixResponse removeLanguage(UUID userId, String languageCode) {
-        User user = userService.getRequiredUser(userId);
+        User user = lockProfile(userId);
         UserLanguage row = languages.findByUserIdAndLanguageCode(userId, languageCode)
                 .orElseThrow(() -> ProblemType.LANGUAGE_NOT_FOUND.because("You do not list '" + languageCode + "'"));
         if (row.isNative() && row.languageCode().equals(user.nativeLanguage())) {
@@ -118,6 +118,11 @@ class LanguageServiceImpl implements LanguageService {
 
     private LanguageMatrixResponse matrix(UUID userId) {
         return mapper.toMatrix(userId, languages.findByUserIdOrderByLanguageCode(userId));
+    }
+
+    private User lockProfile(UUID userId) {
+        return users.findByIdForUpdate(userId)
+                .orElseThrow(() -> ProblemType.USER_NOT_FOUND.because("User " + userId + " does not exist"));
     }
 
     @Nullable

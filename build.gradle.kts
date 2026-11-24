@@ -40,6 +40,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.yaml:snakeyaml")
     testImplementation("io.micronaut:micronaut-http-client")
+    testImplementation("ch.qos.logback:logback-classic")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.5.1")
     testImplementation("com.auth0:java-jwt:4.6.0")   // signs the bearer tokens the tests send
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -54,8 +55,9 @@ application {
 }
 
 java {
-    sourceCompatibility = JavaVersion.toVersion("25")
-    targetCompatibility = JavaVersion.toVersion("25")
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }
 
 
