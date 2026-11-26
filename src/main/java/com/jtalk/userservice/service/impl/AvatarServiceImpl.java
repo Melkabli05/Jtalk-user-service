@@ -36,12 +36,12 @@ class AvatarServiceImpl implements AvatarService {
     public UserProfileResponse upload(UUID userId, String contentType, byte[] image) {
         var current = users.findByIdForUpdate(userId)
                 .orElseThrow(() -> ProblemType.USER_NOT_FOUND.because("You have no profile yet: create it first"));
-        AvatarImages.require(contentType, image, properties.maxAvatarBytes());
+        var prepared = AvatarImages.prepare(contentType, image, properties.maxAvatarBytes());
         long version = System.currentTimeMillis();
-        avatars.upsert(userId, contentType, image, version);
+        avatars.upsert(userId, prepared.contentType(), prepared.image(), version);
         var saved = users.update(current.withAvatar(AvatarImages.addressOf(userId, version)));
         updated.publishEvent(new UserProfileUpdatedEvent(saved));
-        log.info("Saved the picture of {} ({} bytes)", userId, image.length);
+        log.info("Saved the picture of {} ({} bytes)", userId, prepared.image().length);
         return mapper.toProfile(saved, languages.findByUserIdOrderByLanguageCode(userId));
     }
 

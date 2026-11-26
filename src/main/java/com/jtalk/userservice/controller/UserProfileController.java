@@ -11,6 +11,7 @@ import com.jtalk.userservice.dto.response.UserProfileResponse;
 import com.jtalk.userservice.dto.response.DiscoveredUserResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
 import com.jtalk.userservice.service.LanguageService;
+import com.jtalk.userservice.service.SocialGraphService;
 import com.jtalk.userservice.service.UserService;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.HttpResponse;
@@ -51,6 +52,7 @@ class UserProfileController {
 
     private final UserService users;
     private final LanguageService languages;
+    private final SocialGraphService graph;
 
     @Post("/me")
     HttpResponse<UserProfileResponse> createProfile(@CurrentUser UUID userId, @Body @Valid CreateProfileRequest request) {
@@ -60,7 +62,7 @@ class UserProfileController {
 
     @Get("/me")
     UserProfileResponse getMyProfile(@CurrentUser UUID userId) {
-        return users.getProfile(userId);
+        return users.getProfile(userId).withSocialStats(graph.stats(userId, userId));
     }
 
     @Patch("/me")

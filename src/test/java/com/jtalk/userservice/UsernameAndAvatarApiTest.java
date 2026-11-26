@@ -122,15 +122,30 @@ class UsernameAndAvatarApiTest extends ApiTestBase {
                 () -> upload("sara", "this is text".getBytes(), MediaType.IMAGE_JPEG_TYPE));
         // A PNG sent as a JPEG.
         assertProblem(HttpStatus.UNPROCESSABLE_ENTITY, "avatar-invalid", () -> upload("sara", image("png", 128, 128), MediaType.IMAGE_JPEG_TYPE));
-        // Too small, too big in pixels, too big in bytes.
+        // Too small in pixels.
         assertProblem(HttpStatus.UNPROCESSABLE_ENTITY, "avatar-invalid", () -> upload("sara", image("jpg", 32, 32), MediaType.IMAGE_JPEG_TYPE));
-        assertProblem(HttpStatus.UNPROCESSABLE_ENTITY, "avatar-invalid", () -> upload("sara", image("png", 1100, 1100), MediaType.IMAGE_PNG_TYPE));
-        assertProblem(HttpStatus.UNPROCESSABLE_ENTITY, "avatar-invalid", () -> upload("sara", noisy(600, 600), MediaType.IMAGE_PNG_TYPE));
         // Another kind of picture is not offered.
         assertProblem(HttpStatus.UNPROCESSABLE_ENTITY, "avatar-invalid", () -> upload("sara", image("jpg", 128, 128), MediaType.IMAGE_GIF_TYPE));
 
         assertEquals(HttpStatus.NOT_FOUND, assertThrows(HttpClientResponseException.class,
                 () -> http.exchange(HttpRequest.GET(userPath("sara", "/avatar/1")), byte[].class)).getStatus(), "nothing was stored");
+    }
+
+    @Test
+    void oversizedOrLargePicturesAreResizedToSquareJpegServerSide() throws IOException {
+        register("sara");
+
+        String largePng = upload("sara", image("png", 1200, 900), MediaType.IMAGE_PNG_TYPE);
+        HttpResponse<byte[]> fetchedLarge = http.exchange(HttpRequest.GET(largePng), byte[].class);
+        assertEquals("image/jpeg", fetchedLarge.getContentType().orElseThrow().toString());
+        BufferedImage decodedLarge = ImageIO.read(new java.io.ByteArrayInputStream(fetchedLarge.body()));
+        assertEquals(256, decodedLarge.getWidth());
+        assertEquals(256, decodedLarge.getHeight());
+
+        String noisyPng = upload("sara", noisy(600, 600), MediaType.IMAGE_PNG_TYPE);
+        HttpResponse<byte[]> fetchedNoisy = http.exchange(HttpRequest.GET(noisyPng), byte[].class);
+        assertEquals("image/jpeg", fetchedNoisy.getContentType().orElseThrow().toString());
+        assertTrue(fetchedNoisy.body().length <= 204_800);
     }
 
     @Test

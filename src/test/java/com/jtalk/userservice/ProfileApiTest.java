@@ -34,9 +34,12 @@ class ProfileApiTest extends ApiTestBase {
         assertEquals("Sara K", profile.get("displayName"), "surrounding blanks are stripped");
         assertNotNull(profile.get("createdAt"));
 
-        // Anyone can read it, and "me" is the same profile.
+        // Anyone can read it, and "me" is the same profile plus socialStats.
         assertEquals(profile, get(userPath("sara", ""), "someone"));
-        assertEquals(profile, get("/api/v1/users/me", "sara"));
+        Map<String, Object> me = new HashMap<>(get("/api/v1/users/me", "sara"));
+        assertEquals(Map.of("followerCount", 0, "followingCount", 0, "followedByMe", false, "followsMe", false),
+                me.remove("socialStats"));
+        assertEquals(profile, me);
 
         // A partial update: absent fields keep their value, "" clears an optional one, the username never changes.
         Map<String, Object> updated = patch("/api/v1/users/me", "sara", Map.of("displayName", "Sara", "bio", ""));
