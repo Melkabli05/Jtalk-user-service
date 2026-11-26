@@ -21,7 +21,7 @@ import java.util.List;
  */
 @Serdeable.Deserializable
 public record CreateProfileRequest(
-        @NotBlank @Pattern(regexp = UserConstants.USERNAME_PATTERN, message = "must be 3-30 lowercase letters, digits, '_' or '.'") String username,
+        @Nullable @Pattern(regexp = UserConstants.USERNAME_PATTERN, message = "must be 3-30 lowercase letters, digits, '_' or '.'") String username,
         @NotBlank @Size(max = 50) @Pattern(regexp = UserConstants.NOT_BLANK_PATTERN, message = "must not be blank") String displayName,
         @Nullable @Size(max = 300) String bio,
         @Nullable @Size(max = 500) @Pattern(regexp = UserConstants.AVATAR_PATTERN, message = "must be an https URL or an app path such as /avatars/a.svg") String avatarUrl,
