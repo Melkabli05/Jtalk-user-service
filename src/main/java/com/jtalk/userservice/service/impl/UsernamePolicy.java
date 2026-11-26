@@ -48,6 +48,13 @@ class UsernamePolicy {
         return sb.toString();
     }
 
+    /** Throws 409 if {@code username} is already taken in the database. */
+    void requireAvailable(String username) {
+        if (users.existsByUsername(username)) {
+            throw taken(username);
+        }
+    }
+
     /** Throws the 422 or the 409 that says why this user may not take {@code newUsername} now. */
     void requireAllowed(UUID userId, String newUsername) {
         users.findUsernameChangedAt(userId).ifPresent(changedAt -> {
@@ -57,9 +64,7 @@ class UsernamePolicy {
                         "You changed your username recently. You can change it again on " + next.atZone(ZoneOffset.UTC).toLocalDate());
             }
         });
-        if (users.existsByUsername(newUsername)) {
-            throw taken(newUsername);
-        }
+        requireAvailable(newUsername);
     }
 
     static RuntimeException taken(String username) {
