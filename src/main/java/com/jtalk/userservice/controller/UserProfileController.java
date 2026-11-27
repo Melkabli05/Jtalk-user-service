@@ -88,8 +88,9 @@ class UserProfileController {
     }
 
     @Get("/{userId}")
-    UserProfileResponse getProfile(UUID userId) {
-        return users.getProfile(userId);
+    UserProfileResponse getProfile(@CurrentUser UUID viewerId, UUID userId, @Nullable @QueryValue String expand) {
+        UserProfileResponse profile = users.getProfile(userId);
+        return "socialStats".equalsIgnoreCase(expand) ? profile.withSocialStats(graph.stats(viewerId, userId)) : profile;
     }
 
     /** Resolves a whole room at once. A POST because up to 500 ids do not fit in a URL; it reads nothing and changes nothing. */

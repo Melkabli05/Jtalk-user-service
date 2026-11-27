@@ -36,6 +36,9 @@ class ProfileApiTest extends ApiTestBase {
 
         // Anyone can read it, and "me" is the same profile plus socialStats.
         assertEquals(profile, get(userPath("sara", ""), "someone"));
+        Map<String, Object> expanded = get(userPath("sara", "") + "?expand=socialStats", "someone");
+        assertEquals(Map.of("followerCount", 0, "followingCount", 0, "followedByMe", false, "followsMe", false),
+                expanded.get("socialStats"));
         Map<String, Object> me = new HashMap<>(get("/api/v1/users/me", "sara"));
         assertEquals(Map.of("followerCount", 0, "followingCount", 0, "followedByMe", false, "followsMe", false),
                 me.remove("socialStats"));

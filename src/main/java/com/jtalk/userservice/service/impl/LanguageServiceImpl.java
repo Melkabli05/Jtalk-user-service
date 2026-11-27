@@ -45,15 +45,20 @@ class LanguageServiceImpl implements LanguageService {
     @Override
     @Transactional
     public LanguageMatrixResponse addLanguage(UUID userId, AddLanguageRequest request) {
-        lockProfile(userId);
+        User user = lockProfile(userId);
         Optional<UserLanguage> existing = languages.findByUserIdAndLanguageCode(userId, request.languageCode());
         if (existing.isPresent()) {
             UserLanguage row = existing.get();
             if (row.languageType() != request.languageType()) {
-                throw ProblemType.LANGUAGE_CONFLICT.because("You already list '%s' as %s: remove it first to list it as %s"
-                        .formatted(request.languageCode(), row.languageType(), request.languageType()));
-            }
-            if (!row.isNative()) {
+                if (row.isNative() && row.languageCode().equals(user.nativeLanguage())) {
+                    throw ProblemType.PRIMARY_LANGUAGE_REQUIRED.because(
+                            "'" + request.languageCode() + "' is your primary native language: change it on your profile first");
+                }
+                UserLanguage switched = request.languageType() == LanguageType.NATIVE
+                        ? row.asNative()
+                        : row.asLearning(request.proficiencyLevel());
+                languages.update(switched);
+            } else if (!row.isNative()) {
                 languages.update(row.withProficiency(request.proficiencyLevel()));
             }
         } else {

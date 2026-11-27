@@ -53,9 +53,11 @@ class LanguageApiTest extends ApiTestBase {
         register("alice", "en");
         learn("alice", "ar", null);
 
-        assertProblem(HttpStatus.CONFLICT, "language-conflict", () -> learn("alice", "en", null));
-        assertProblem(HttpStatus.CONFLICT, "language-conflict",
-                () -> post("/api/v1/users/me/languages", "alice", Map.of("languageCode", "ar", "languageType", "NATIVE")));
+        assertProblem(HttpStatus.UNPROCESSABLE_ENTITY, "primary-language-required", () -> learn("alice", "en", null));
+        Map<String, Object> switched = post("/api/v1/users/me/languages", "alice",
+                Map.of("languageCode", "ar", "languageType", "NATIVE"));
+        assertEquals(List.of("ar", "en"), switched.get("nativeLanguages"));
+        assertEquals(List.of(), switched.get("learningLanguages"));
 
         learn("alice", "fr", null);   // en + ar + fr = the 3 this test allows
         assertProblem(HttpStatus.UNPROCESSABLE_ENTITY, "too-many-languages", () -> learn("alice", "de", null));
