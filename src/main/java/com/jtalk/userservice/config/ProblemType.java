@@ -28,7 +28,8 @@ public enum ProblemType {
     LANGUAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "Language not listed"),
     PRIMARY_LANGUAGE_REQUIRED(HttpStatus.UNPROCESSABLE_ENTITY, "Your primary native language cannot be removed"),
     TOO_MANY_LANGUAGES(HttpStatus.UNPROCESSABLE_ENTITY, "Too many languages"),
-    NO_LEARNING_LANGUAGE(HttpStatus.UNPROCESSABLE_ENTITY, "No learning language to match on");
+    NO_LEARNING_LANGUAGE(HttpStatus.UNPROCESSABLE_ENTITY, "No learning language to match on"),
+    INVALID_INPUT(HttpStatus.BAD_REQUEST, "Invalid input");
 
     private static final String TYPE_PREFIX = "urn:jtalk:user:problem:";
 
