@@ -10,6 +10,7 @@ import com.jtalk.userservice.dto.response.UserPageResponse;
 import com.jtalk.userservice.dto.response.UserProfileResponse;
 import com.jtalk.userservice.dto.response.DiscoveredUserResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
+import com.jtalk.userservice.dto.response.UsernameAvailabilityResponse;
 import com.jtalk.userservice.service.LanguageService;
 import com.jtalk.userservice.service.SocialGraphService;
 import com.jtalk.userservice.service.UserService;
@@ -27,6 +28,7 @@ import io.micronaut.http.annotation.Status;
 import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
 import io.micronaut.security.annotation.Secured;
+import io.micronaut.security.authentication.Authentication;
 import io.micronaut.security.rules.SecurityRule;
 import io.micronaut.validation.Validated;
 import jakarta.validation.Valid;
@@ -70,11 +72,19 @@ class UserProfileController {
         return users.updateProfile(userId, request);
     }
 
-    /** Deletes the caller's account and everything that hangs off it. Idempotent. */
+    /** Deletes the caller's account and everything that hangs off it, plus the Auth0 identity if configured. Idempotent. */
     @Delete("/me")
     @Status(HttpStatus.NO_CONTENT)
-    void deleteMyAccount(@CurrentUser UUID userId) {
-        users.deleteAccount(userId);
+    void deleteMyAccount(@CurrentUser UUID userId, Authentication authentication) {
+        String sub = authentication.getAttributes().get("sub") instanceof String s ? s : null;
+        users.deleteAccount(userId, sub);
+    }
+
+    @Get("/username-available")
+    UsernameAvailabilityResponse isUsernameAvailable(
+            @CurrentUser UUID userId,
+            @QueryValue @NotBlank @Pattern(regexp = UserConstants.USERNAME_PATTERN, message = "must be 3-30 lowercase letters, digits, '_' or '.'") String username) {
+        return new UsernameAvailabilityResponse(username, users.isUsernameAvailable(userId, username));
     }
 
     @Get("/{userId}")

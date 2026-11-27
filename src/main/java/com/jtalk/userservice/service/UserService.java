@@ -8,6 +8,7 @@ import com.jtalk.userservice.dto.response.UserProfileResponse;
 import com.jtalk.userservice.dto.response.DiscoveredUserResponse;
 import com.jtalk.userservice.dto.response.UserSummaryResponse;
 import io.micronaut.core.annotation.NonNull;
+import io.micronaut.core.annotation.Nullable;
 import io.micronaut.validation.Validated;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -41,12 +42,20 @@ public interface UserService {
 
     UserProfileResponse updateProfile(@NonNull UUID userId, @Valid @NotNull UpdateProfileRequest request);
 
+    /** Whether {@code username} is free (or already belongs to {@code requesterId}). */
+    boolean isUsernameAvailable(@NonNull UUID requesterId, @NotBlank String username);
+
     /**
      * Deletes the caller's account for good: the profile, their languages, every follow to or from them and every block they made or
      * received go with it (the database cascades), and the cached copies are dropped. Asking again for an account that is already gone is
-     * not an error. They may sign up again afterwards.
+     * not an error. They may sign up again afterwards. When {@code auth0Subject} is provided and Auth0 Management credentials are
+     * configured, the external Auth0 identity is also removed after the local transaction commits.
      */
-    void deleteAccount(@NonNull UUID userId);
+    void deleteAccount(@NonNull UUID userId, @Nullable String auth0Subject);
+
+    default void deleteAccount(@NonNull UUID userId) {
+        deleteAccount(userId, null);
+    }
 
     /** Active users whose username or display name starts with {@code query}, never ones who blocked the caller or whom the caller blocked. */
     List<DiscoveredUserResponse> search(@NonNull UUID viewerId, @NotBlank String query,

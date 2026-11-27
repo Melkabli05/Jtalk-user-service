@@ -20,11 +20,15 @@ import com.jtalk.userservice.repository.UserRedisRepository;
 import com.jtalk.userservice.repository.UserRepository;
 import com.jtalk.userservice.service.UserService;
 import io.micronaut.context.event.ApplicationEventPublisher;
+import io.micronaut.core.annotation.Nullable;
 import io.micronaut.data.exceptions.DataAccessException;
+import io.micronaut.transaction.TransactionOperations;
 import io.micronaut.transaction.annotation.Transactional;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.sql.Connection;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -62,6 +66,8 @@ class UserServiceImpl implements UserService {
     private final FollowRepository follows;
     private final UserAvatarRepository avatars;
     private final UsernamePolicy usernamePolicy;
+    private final Auth0IdentityDeleter auth0Deleter;
+    private final TransactionOperations<Connection> transactions;
 
     @Override
     @Transactional
@@ -179,16 +185,24 @@ class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
-    public void deleteAccount(UUID userId) {
-        if (!users.existsById(userId)) {
-            return;
-        }
-        // Read before the delete: afterwards the follows that say whose counts change are gone.
-        Set<UUID> neighbours = new HashSet<>(follows.findNeighbours(userId));
-        users.deleteById(userId);
-        deleted.publishEvent(new UserDeletedEvent(userId, neighbours));
-        log.info("Deleted account {}", userId);
+    public boolean isUsernameAvailable(UUID requesterId, String username) {
+        return !users.existsByUsernameAndIdNot(username, requesterId);
+    }
+
+    @Override
+    public void deleteAccount(UUID userId, @Nullable String auth0Subject) {
+        transactions.executeWrite(status -> {
+            if (!users.existsById(userId)) {
+                return null;
+            }
+            // Read before the delete: afterwards the follows that say whose counts change are gone.
+            Set<UUID> neighbours = new HashSet<>(follows.findNeighbours(userId));
+            users.deleteById(userId);
+            deleted.publishEvent(new UserDeletedEvent(userId, neighbours));
+            log.info("Deleted account {}", userId);
+            return null;
+        });
+        auth0Deleter.deleteUser(auth0Subject);
     }
 
     @Override

@@ -18,6 +18,8 @@ public interface UserRepository extends CrudRepository<User, UUID> {
 
     boolean existsByUsername(String username);
 
+    boolean existsByUsernameAndIdNot(String username, UUID id);
+
     Optional<User> findByIdForUpdate(UUID id);
 
     /** When this user last changed their username; empty if they never did. */

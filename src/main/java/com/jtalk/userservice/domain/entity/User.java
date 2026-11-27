@@ -32,12 +32,12 @@ public record User(
     /** A new, unsaved user: the timestamps are filled in by Micronaut Data when it is inserted. */
     public static User register(UUID id, String username, String displayName, @Nullable String bio, @Nullable String avatarUrl,
                                 @Nullable String countryCode, String nativeLanguage) {
-        return new User(id, username, displayName.strip(), blankToNull(bio), blankToNull(avatarUrl), countryCode, nativeLanguage,
-                UserStatus.ACTIVE, null, null);
+        return new User(id, username, displayName.strip(), blankToNull(bio), blankToNull(avatarUrl), blankToNull(countryCode),
+                nativeLanguage, UserStatus.ACTIVE, null, null);
     }
 
     /**
-     * Applies a partial update. A null argument keeps the current value (a new username is checked and rate-limited by the service, not here); for {@code bio} and {@code avatarUrl}, which are optional,
+     * Applies a partial update. A null argument keeps the current value (a new username is checked and rate-limited by the service, not here); for {@code bio}, {@code avatarUrl}, and {@code countryCode}, which are optional,
      * an empty string clears it.
      */
     public User withProfile(@Nullable String newUsername, @Nullable String newDisplayName, @Nullable String newBio, @Nullable String newAvatarUrl,
@@ -46,7 +46,7 @@ public record User(
                 newDisplayName == null ? displayName : newDisplayName.strip(),
                 newBio == null ? bio : blankToNull(newBio),
                 newAvatarUrl == null ? avatarUrl : blankToNull(newAvatarUrl),
-                newCountryCode == null ? countryCode : newCountryCode,
+                newCountryCode == null ? countryCode : blankToNull(newCountryCode),
                 newNativeLanguage == null ? nativeLanguage : newNativeLanguage,
                 status, createdAt, updatedAt);
     }

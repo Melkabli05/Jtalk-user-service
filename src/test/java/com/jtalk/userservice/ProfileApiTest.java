@@ -117,6 +117,12 @@ class ProfileApiTest extends ApiTestBase {
 
         Map<String, Object> changed = patch("/api/v1/users/me", "nour", Map.of("countryCode", "MA"));
         assertEquals("MA", changed.get("countryCode"));
+
+        Map<String, Object> cleared = patch("/api/v1/users/me", "nour", Map.of("countryCode", ""));
+        assertNull(cleared.get("countryCode"), "an empty countryCode clears it");
+        assertNull(get(userPath("nour", ""), "someone").get("countryCode"), "cleared in cache");
+        redis.sync().flushall();
+        assertNull(get(userPath("nour", ""), "someone").get("countryCode"), "cleared in database");
     }
 
     private void registerAs(String user, String username, String displayName) {

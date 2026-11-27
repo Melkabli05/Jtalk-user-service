@@ -60,3 +60,10 @@ endpoints:
     enabled: true
     sensitive: false
     details-visible: AUTHENTICATED
+
+# Optional Auth0 Management API M2M credentials for removing the Auth0 identity on DELETE /api/v1/users/me.
+auth0:
+  management:
+    domain: ${AUTH0_DOMAIN:}
+    client-id: ${AUTH0_MGMT_CLIENT_ID:}
+    client-secret: ${AUTH0_MGMT_CLIENT_SECRET:}

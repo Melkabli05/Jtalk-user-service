@@ -75,6 +75,25 @@ class UsernameAndAvatarApiTest extends ApiTestBase {
         assertEquals("sara.fresh", patch("/api/v1/users/me", "sara", Map.of("username", "sara.fresh")).get("username"));
     }
 
+    @Test
+    void usernameAvailabilityReflectsTakenFreeOwnAndInvalidHandles() {
+        register("sara");
+        register("omar");
+
+        Map<String, Object> taken = get("/api/v1/users/username-available?username=" + username("omar"), "sara");
+        assertEquals(false, taken.get("available"));
+        assertEquals(username("omar"), taken.get("username"));
+
+        Map<String, Object> own = get("/api/v1/users/username-available?username=" + username("sara"), "sara");
+        assertEquals(true, own.get("available"), "a user's own current username is available to them");
+
+        Map<String, Object> free = get("/api/v1/users/username-available?username=brand.new", "sara");
+        assertEquals(true, free.get("available"));
+
+        assertThrows(HttpClientResponseException.class,
+                () -> get("/api/v1/users/username-available?username=Bad!", "sara"));
+    }
+
     // ---- uploaded pictures -------------------------------------------------------------------------
 
     @Test
