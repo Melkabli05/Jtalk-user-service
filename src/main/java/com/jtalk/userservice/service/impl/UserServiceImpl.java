@@ -1,6 +1,7 @@
 package com.jtalk.userservice.service.impl;
 
 import com.jtalk.userservice.config.ProblemType;
+import com.jtalk.userservice.config.TextSanitizer;
 import com.jtalk.userservice.config.UserProperties;
 import com.jtalk.userservice.domain.entity.User;
 import com.jtalk.userservice.domain.entity.UserLanguage;

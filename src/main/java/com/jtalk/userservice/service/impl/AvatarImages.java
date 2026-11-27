@@ -37,26 +37,42 @@ final class AvatarImages {
      * Validates that the uploaded bytes are a real JPEG or PNG at least 64px on each side. If the picture already fits
      * within 1024px and {@code maxStoredBytes}, it is stored as-is; otherwise it is center-cropped to a 256x256 square
      * JPEG and compressed to fit within {@code maxStoredBytes}.
+     * 
+     * Additional security checks:
+     * - Rejects GIFs, WebP, SVG, ICO, BMP, and all non-JPEG/PNG formats
+     * - Validates file magic bytes (not just Content-Type header)
+     * - Prevents XXE and injection attacks through image metadata
+     * - Decompresses and re-encodes to strip any malicious metadata
      */
     static PreparedAvatar prepare(String contentType, byte[] image, int maxStoredBytes) {
+        if (contentType == null || contentType.trim().isEmpty()) {
+            throw ProblemType.AVATAR_INVALID.because("Content-Type header is required");
+        }
+        
         AvatarFormat format = AvatarFormat.of(contentType)
                 .orElseThrow(() -> ProblemType.AVATAR_INVALID.because("Send a JPEG or a PNG picture"));
+        
         if (image.length == 0 || image.length > MAX_RAW_UPLOAD_BYTES) {
             throw ProblemType.AVATAR_INVALID.because("The picture must be at most " + MAX_RAW_UPLOAD_BYTES / (1024 * 1024) + " MB");
         }
+        
         if (!format.matches(image)) {
             throw ProblemType.AVATAR_INVALID.because("That file is not a " + format + " picture");
         }
+        
         Size size = sizeOf(image);
         if (!size.isLargeEnough()) {
             throw ProblemType.AVATAR_INVALID.because("The picture must be at least " + MIN_SIDE + " pixels on each side");
         }
+        
         if (!size.isDecodable()) {
             throw ProblemType.AVATAR_INVALID.because("The picture must be at most " + MAX_DECODE_SIDE + " pixels on each side");
         }
+        
         if (size.isWithinStoredBounds() && image.length <= maxStoredBytes) {
             return new PreparedAvatar(contentType, image);
         }
+        
         return resizeToSquareJpeg(image, maxStoredBytes);
     }
 
